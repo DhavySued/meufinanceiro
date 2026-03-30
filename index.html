@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meu Financeiro</title>
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="alternate icon" href="favicon.svg">
+  <link rel="apple-touch-icon" href="favicon.svg">
+  <meta name="theme-color" content="#7e22ce">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside id="sidebar">
+    <div class="sidebar-logo">
+      <i class="ph-fill ph-wallet logo-icon"></i>
+      <span class="logo-text">Meu Financeiro</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <ul>
+        <li>
+          <a href="#dashboard" class="nav-link" data-page="dashboard">
+            <i class="ph ph-squares-four nav-icon"></i>
+            <span>Dashboard</span>
+          </a>
+        </li>
+        <!-- Cadastro (submenu) -->
+        <li>
+          <details class="nav-group" id="nav-cadastro">
+            <summary class="nav-link nav-group-toggle">
+              <i class="ph ph-gear nav-icon"></i>
+              <span>Cadastro</span>
+              <i class="ph ph-caret-right nav-arrow"></i>
+            </summary>
+            <ul class="nav-sub">
+              <li>
+                <a href="#cad-categorias" class="nav-link nav-sub-link" data-page="cad-categorias">
+                  <i class="ph ph-tags nav-icon"></i>
+                  <span>Categorias</span>
+                </a>
+              </li>
+              <li>
+                <a href="#cad-cartoes" class="nav-link nav-sub-link" data-page="cad-cartoes">
+                  <i class="ph ph-credit-card nav-icon"></i>
+                  <span>Cartões</span>
+                </a>
+              </li>
+              <li>
+                <a href="#cad-responsaveis" class="nav-link nav-sub-link" data-page="cad-responsaveis">
+                  <i class="ph ph-users nav-icon"></i>
+                  <span>Responsáveis</span>
+                </a>
+              </li>
+            </ul>
+          </details>
+        </li>
+
+        <li>
+          <a href="#cartoes" class="nav-link" data-page="cartoes">
+            <i class="ph ph-credit-card nav-icon"></i>
+            <span>Cartões</span>
+          </a>
+        </li>
+        <li>
+          <a href="#mes-a-mes" class="nav-link" data-page="mes-a-mes">
+            <i class="ph ph-chart-bar nav-icon"></i>
+            <span>DRE</span>
+          </a>
+        </li>
+        <li>
+          <a href="#caixinhas" class="nav-link" data-page="caixinhas">
+            <i class="ph ph-piggy-bank nav-icon"></i>
+            <span>Caixinhas</span>
+          </a>
+        </li>
+        <li>
+          <a href="#importacao" class="nav-link" data-page="importacao">
+            <i class="ph ph-upload-simple nav-icon"></i>
+            <span>Importação</span>
+          </a>
+        </li>
+        <li>
+          <a href="#configuracoes" class="nav-link" data-page="configuracoes">
+            <i class="ph ph-gear nav-icon"></i>
+            <span>Configurações</span>
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <div class="sidebar-footer">
+      <span class="sidebar-version">v1.0.0</span>
+      <span class="sidebar-by">by <a href="https://github.com/dhavysued" target="_blank" rel="noopener" class="sidebar-author-link">Dhavy Sued</a></span>
+    </div>
+  </aside>
+
+  <!-- Overlay para fechar sidebar no mobile -->
+  <div id="sidebar-overlay"></div>
+
+  <!-- Main Content -->
+  <div id="main-wrapper">
+    <header id="top-bar">
+      <button id="hamburger" aria-label="Menu"><i class="ph ph-list"></i></button>
+      <h1 id="page-title">Dashboard</h1>
+      <div class="top-bar-right">
+        <div class="user-avatar">MF</div>
+      </div>
+    </header>
+
+    <main id="app-content">
+      <!-- Conteúdo injetado pelo JS -->
+    </main>
+  </div>
+
+  <!-- Barra de Navegação Inferior (mobile) -->
+  <nav id="bottom-nav" aria-label="Navegação principal">
+    <div class="bottom-nav-items">
+      <a href="#dashboard" class="bottom-nav-item" data-page="dashboard">
+        <i class="ph ph-squares-four"></i>
+        <span>Dashboard</span>
+      </a>
+      <a href="#cartoes" class="bottom-nav-item" data-page="cartoes">
+        <i class="ph ph-credit-card"></i>
+        <span>Cartões</span>
+      </a>
+      <a href="#mes-a-mes" class="bottom-nav-item" data-page="mes-a-mes">
+        <i class="ph ph-chart-bar"></i>
+        <span>DRE</span>
+      </a>
+      <a href="#configuracoes" class="bottom-nav-item" data-page="configuracoes">
+        <i class="ph ph-gear"></i>
+        <span>Config</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- FAB: Novo Lançamento -->
+  <button id="fab-novo-lancamento" aria-label="Novo Lançamento">
+    <i class="ph ph-plus" style="pointer-events:none"></i>
+  </button>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/router.js"></script>
+  <script src="js/pages/dashboard.js"></script>
+  <script src="js/pages/cartoes.js"></script>
+<script src="js/pages/mes-a-mes.js"></script>
+  <script src="js/pages/cad-categorias.js"></script>
+  <script src="js/pages/cad-cartoes.js"></script>
+  <script src="js/pages/cad-responsaveis.js"></script>
+  <script src="js/pages/orcamento.js"></script>
+  <script src="js/pages/caixinhas.js"></script>
+  <script src="js/pages/importacao.js"></script>
+  <script src="js/pages/configuracoes.js"></script>
+  <script src="js/app.js"></script>
+
+</body>
+</html>
