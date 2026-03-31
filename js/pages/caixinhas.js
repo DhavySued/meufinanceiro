@@ -4,6 +4,25 @@ Router.register('caixinhas', function (container) {
   var animando      = false;
   var caixinhaAtiva = null;
 
+  // ── Caixinhas ocultas (localStorage) ──
+  function getOcultas() {
+    try { return JSON.parse(localStorage.getItem('mf_cx_ocultas') || '[]'); } catch(e) { return []; }
+  }
+  function setOcultas(arr) {
+    localStorage.setItem('mf_cx_ocultas', JSON.stringify(arr));
+  }
+  function isOculta(id) {
+    return getOcultas().indexOf(id) !== -1;
+  }
+  function ocultarCaixinha(id) {
+    var arr = getOcultas();
+    if (arr.indexOf(id) === -1) arr.push(id);
+    setOcultas(arr);
+  }
+  function mostrarCaixinhaId(id) {
+    setOcultas(getOcultas().filter(function(x) { return x !== id; }));
+  }
+
   function fmtR(v) {
     return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   }
@@ -250,9 +269,163 @@ Router.register('caixinhas', function (container) {
     };
   }
 
+  // ── Modal: Transferência entre caixinhas ──
+  function abrirModalTransferencia(origem) {
+    var ant = document.getElementById('modal-cx-transf');
+    if (ant) ant.remove();
+
+    var outras = AppData.caixinhas.filter(function (c) { return c.id !== origem.id; });
+    if (!outras.length) {
+      alert('Não há outras caixinhas disponíveis. Crie mais caixinhas para transferir.');
+      return;
+    }
+
+    var optsDestino = outras.map(function (c) {
+      return '<option value="' + c.id + '">' + c.nome + ' (' + fmtR(getSaldo(c)) + ')</option>';
+    }).join('');
+
+    var m = document.createElement('div');
+    m.className = 'modal-overlay';
+    m.id = 'modal-cx-transf';
+    m.innerHTML =
+      '<div class="modal">' +
+        '<div class="modal-header">' +
+          '<h3>Transferir Valor</h3>' +
+          '<button class="modal-close" id="btn-fechar-transf">&times;</button>' +
+        '</div>' +
+        '<div class="modal-body">' +
+          '<div style="display:flex;align-items:center;gap:8px;background:var(--color-primary-light);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--color-primary)">' +
+            '<i class="ph ph-arrows-left-right" style="font-size:16px;flex-shrink:0"></i>' +
+            '<span>Saída de <strong>' + origem.nome + '</strong> → entrada na caixinha selecionada</span>' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>Caixinha destino</label>' +
+            '<select id="cx-transf-destino">' + optsDestino + '</select>' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>Descrição</label>' +
+            '<input type="text" id="cx-transf-desc" placeholder="Ex: Remanejamento de verba" />' +
+          '</div>' +
+          '<div class="form-row">' +
+            '<div class="form-group">' +
+              '<label>Valor (R$)</label>' +
+              '<input type="number" id="cx-transf-valor" placeholder="0,00" min="0.01" step="0.01" />' +
+            '</div>' +
+            '<div class="form-group">' +
+              '<label>Data</label>' +
+              '<input type="text" id="cx-transf-data" placeholder="DD/MM/AAAA" maxlength="10" value="' + hoje() + '" />' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="modal-footer">' +
+          '<button class="btn btn-outline" id="btn-cancelar-transf">Cancelar</button>' +
+          '<button class="btn btn-primary" id="btn-salvar-transf"><i class="ph ph-arrows-left-right" style="margin-right:5px"></i>Transferir</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(m);
+    m.classList.add('open');
+
+    function fechar() { m.classList.remove('open'); setTimeout(function () { m.remove(); }, 300); }
+    document.getElementById('btn-fechar-transf').onclick   = fechar;
+    document.getElementById('btn-cancelar-transf').onclick = fechar;
+    m.addEventListener('click', function (e) { if (e.target === m) fechar(); });
+
+    document.getElementById('btn-salvar-transf').onclick = async function () {
+      var destinoId = parseInt(document.getElementById('cx-transf-destino').value);
+      var desc      = document.getElementById('cx-transf-desc').value.trim();
+      var valor     = parseFloat(document.getElementById('cx-transf-valor').value);
+      var data      = document.getElementById('cx-transf-data').value.trim() || hoje();
+      if (!desc || isNaN(valor) || valor <= 0) { alert('Preencha a descrição e o valor.'); return; }
+      var destino = AppData.caixinhas.find(function (c) { return c.id === destinoId; });
+      if (!destino) return;
+
+      var btn = document.getElementById('btn-salvar-transf');
+      btn.disabled = true;
+      btn.textContent = 'Transferindo...';
+
+      await AppData.addLancCaixinha(origem.id, {
+        tipo: 'saida', desc: desc, valor: valor, data: data,
+        tag: 'transferencia', paraCx: destino.nome
+      });
+      await AppData.addLancCaixinha(destino.id, {
+        tipo: 'entrada', desc: desc, valor: valor, data: data,
+        tag: 'transferencia', deCx: origem.nome
+      });
+
+      fechar();
+      var freshC = AppData.caixinhas.find(function (x) { return x.id === origem.id; });
+      if (freshC) { caixinhaAtiva = freshC; renderDetalhe(freshC, false); }
+    };
+  }
+
+  // ── Modal: Caixinhas ocultas ──
+  function abrirModalOcultas() {
+    var ant = document.getElementById('modal-cx-ocultas');
+    if (ant) ant.remove();
+
+    var ocultas = getOcultas();
+    var lista = AppData.caixinhas.filter(function (c) { return ocultas.indexOf(c.id) !== -1; });
+
+    function buildLinhas() {
+      return lista.length
+        ? lista.map(function (c) {
+            var saldo = getSaldo(c);
+            return '<div class="cx-oculta-item" data-id="' + c.id + '" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--color-border)">' +
+              '<div style="width:34px;height:34px;border-radius:50%;background:' + c.cor + '22;color:' + c.cor + ';display:flex;align-items:center;justify-content:center;flex-shrink:0">' +
+                '<i class="ph-fill ph-piggy-bank"></i>' +
+              '</div>' +
+              '<div style="flex:1;min-width:0">' +
+                '<div style="font-weight:600;font-size:14px">' + c.nome + '</div>' +
+                '<div style="font-size:12px;color:var(--color-muted)">' + fmtR(saldo) + '</div>' +
+              '</div>' +
+              '<button class="btn btn-outline btn-mostrar-cx" data-id="' + c.id + '" style="font-size:12px;padding:4px 14px;white-space:nowrap">Mostrar</button>' +
+            '</div>';
+          }).join('')
+        : '<div style="text-align:center;color:var(--color-muted);padding:28px 0">Nenhuma caixinha oculta no momento.</div>';
+    }
+
+    var m = document.createElement('div');
+    m.className = 'modal-overlay';
+    m.id = 'modal-cx-ocultas';
+    m.innerHTML =
+      '<div class="modal">' +
+        '<div class="modal-header">' +
+          '<h3>Caixinhas Ocultas</h3>' +
+          '<button class="modal-close" id="btn-fechar-ocultas">&times;</button>' +
+        '</div>' +
+        '<div class="modal-body" id="cx-ocultas-body">' + buildLinhas() + '</div>' +
+        '<div class="modal-footer">' +
+          '<button class="btn btn-outline" id="btn-fechar-ocultas-2">Fechar</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(m);
+    m.classList.add('open');
+
+    var alterou = false;
+    function fechar() {
+      m.classList.remove('open');
+      setTimeout(function () {
+        m.remove();
+        if (alterou) renderMain(true);
+      }, 300);
+    }
+    document.getElementById('btn-fechar-ocultas').onclick   = fechar;
+    document.getElementById('btn-fechar-ocultas-2').onclick = fechar;
+    m.addEventListener('click', function (e) { if (e.target === m) fechar(); });
+
+    m.querySelector('#cx-ocultas-body').addEventListener('click', function (e) {
+      var btn = e.target.closest('.btn-mostrar-cx');
+      if (!btn) return;
+      var id = parseInt(btn.dataset.id);
+      mostrarCaixinhaId(id);
+      alterou = true;
+      lista = lista.filter(function (c) { return c.id !== id; });
+      document.getElementById('cx-ocultas-body').innerHTML = buildLinhas();
+    });
+  }
+
   // ── HTML builders ──
 
-  // Card compacto de caixinha individual dentro de um grupo
   function buildCardHTML(c) {
     var saldo = getSaldo(c);
     var pct   = c.meta > 0 ? Math.min(Math.round((saldo / c.meta) * 100), 100) : -1;
@@ -283,9 +456,12 @@ Router.register('caixinhas', function (container) {
   function buildMainHTML() {
     var admins     = AppData.getFluxoCaixa();
     var saldoTotal = getSaldoGeral();
+    var ocultas    = getOcultas();
 
-    // ── Definição de grupos: Geral + um por responsável ──
-    // Cores de destaque por grupo (ícone)
+    // Caixinhas visíveis e ocultas
+    var todasOcultasLista = AppData.caixinhas.filter(function (c) { return ocultas.indexOf(c.id) !== -1; });
+    var totalOcultas = todasOcultasLista.length;
+
     var GRUPO_CORES = ['#64748b', '#7c3aed', '#db2777', '#0891b2', '#059669', '#d97706'];
     var grupos = [
       { respId: null, titulo: 'Reservas Gerais', icon: 'ph-globe-hemisphere-west', cor: GRUPO_CORES[0] }
@@ -294,8 +470,9 @@ Router.register('caixinhas', function (container) {
     }));
 
     var gruposHTML = grupos.map(function (g) {
-      var lista    = AppData.caixinhas.filter(function (c) {
-        return g.respId === null ? !c.responsavelId : c.responsavelId === g.respId;
+      var lista = AppData.caixinhas.filter(function (c) {
+        var pertence = g.respId === null ? !c.responsavelId : c.responsavelId === g.respId;
+        return pertence && ocultas.indexOf(c.id) === -1;
       });
       var subTotal = lista.reduce(function (t, c) { return t + getSaldo(c); }, 0);
 
@@ -323,12 +500,23 @@ Router.register('caixinhas', function (container) {
       '</div>';
     }).join('');
 
-    var geralSub = AppData.caixinhas.length + ' caixinha' + (AppData.caixinhas.length !== 1 ? 's' : '') + ' · total acumulado';
+    var visiveis = AppData.caixinhas.filter(function (c) { return ocultas.indexOf(c.id) === -1; });
+    var geralSub = visiveis.length + ' caixinha' + (visiveis.length !== 1 ? 's' : '') + ' · total acumulado';
+
+    var btnOcultasHTML = totalOcultas > 0
+      ? '<button class="btn btn-outline" id="btn-ver-ocultas" style="font-size:13px;display:flex;align-items:center;gap:6px">' +
+          '<i class="ph ph-eye-slash"></i> Ver ocultadas' +
+          '<span style="background:var(--color-muted);color:#fff;border-radius:20px;padding:1px 7px;font-size:11px;font-weight:700">' + totalOcultas + '</span>' +
+        '</button>'
+      : '';
 
     return '<div id="cx-view" class="cx-view-main">' +
       '<div class="page-header">' +
         '<h2>Caixinhas</h2>' +
-        '<button class="btn btn-primary" id="btn-nova-cx">+ Nova Caixinha</button>' +
+        '<div style="display:flex;gap:8px;align-items:center">' +
+          btnOcultasHTML +
+          '<button class="btn btn-primary" id="btn-nova-cx">+ Nova Caixinha</button>' +
+        '</div>' +
       '</div>' +
       '<div class="cx-geral">' +
         '<div>' +
@@ -348,9 +536,8 @@ Router.register('caixinhas', function (container) {
                     'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
   function buildDetalheHTML(c) {
-    var saldo = getSaldo(c); // sempre total acumulado, nunca filtrado por mês
+    var saldo = getSaldo(c);
 
-    // ── Histórico: aplica filtro de mês se a configuração estiver ativa ──
     var filtroMesAtivo = localStorage.getItem('mf_cx_filtro_mes') === 'true';
     var lancs = (c.lancamentos || []).slice().reverse();
 
@@ -366,7 +553,6 @@ Router.register('caixinhas', function (container) {
 
     var resp = c.responsavelId ? AppData.getById(c.responsavelId) : null;
 
-    // Badge indicando o filtro ativo
     var filtroTag = filtroMesAtivo
       ? '<span style="font-size:11px;background:#eff6ff;color:#3b82f6;border:1px solid #bfdbfe;' +
           'border-radius:20px;padding:2px 10px;font-weight:600">' +
@@ -383,15 +569,39 @@ Router.register('caixinhas', function (container) {
     var linhasHTML = lancs.length
       ? lancs.map(function (l) {
           var ent = l.tipo === 'entrada';
+          var isTransf = l.tag === 'transferencia';
+
+          // Badge do tipo
+          var badgeHTML;
+          if (isTransf) {
+            badgeHTML = '<span class="badge" style="background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd">↔ Transferência</span>';
+          } else if (ent) {
+            badgeHTML = '<span class="badge" style="background:var(--color-income-bg);color:var(--color-income)">Entrada</span>';
+          } else {
+            badgeHTML = '<span class="badge" style="background:var(--color-expense-bg);color:var(--color-expense)">Saída</span>';
+          }
+
+          // Subtítulo de direção para transferências
+          var subDesc = '';
+          if (isTransf && l.paraCx) {
+            subDesc = '<div style="font-size:11px;color:var(--color-muted);margin-top:1px">→ ' + l.paraCx + '</div>';
+          } else if (isTransf && l.deCx) {
+            subDesc = '<div style="font-size:11px;color:var(--color-muted);margin-top:1px">← ' + l.deCx + '</div>';
+          }
+
           return '<tr>' +
             '<td style="color:var(--color-muted);font-size:13px">' + l.data + '</td>' +
-            '<td><strong>' + l.desc + '</strong></td>' +
-            '<td><span class="badge" style="background:' + (ent ? 'var(--color-income-bg)' : 'var(--color-expense-bg)') + ';color:' + (ent ? 'var(--color-income)' : 'var(--color-expense)') + '">' + (ent ? 'Entrada' : 'Saída') + '</span></td>' +
+            '<td><strong>' + l.desc + '</strong>' + subDesc + '</td>' +
+            '<td>' + badgeHTML + '</td>' +
             '<td class="' + (ent ? 'amount-income' : 'amount-expense') + '">' + (ent ? '+' : '-') + fmtR(l.valor) + '</td>' +
             '<td><button class="btn-del-lanc-cx" data-id="' + l.id + '" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:18px;line-height:1" title="Remover">×</button></td>' +
           '</tr>';
         }).join('')
       : '<tr><td colspan="5" style="text-align:center;color:var(--color-muted);padding:36px 22px">' + emptyMsg + '</td></tr>';
+
+    var ocultaBtnHTML = isOculta(c.id)
+      ? '<button id="btn-mostrar-cx" style="background:#f0fdf4;color:#16a34a;border:none;border-radius:8px;padding:5px 14px;cursor:pointer;font-size:12px;font-weight:600"><i class="ph ph-eye" style="margin-right:4px"></i>Mostrar</button>'
+      : '<button id="btn-ocultar-cx" style="background:var(--color-bg-alt,#f8fafc);color:var(--color-muted);border:none;border-radius:8px;padding:5px 14px;cursor:pointer;font-size:12px;font-weight:600"><i class="ph ph-eye-slash" style="margin-right:4px"></i>Ocultar</button>';
 
     return '<div id="cx-view">' +
       '<div class="cx-detail-hdr" style="background:' + c.cor + '">' +
@@ -403,14 +613,19 @@ Router.register('caixinhas', function (container) {
           (c.meta > 0 ? '<div style="color:rgba(255,255,255,0.7);font-size:12px;margin-top:2px">Meta: ' + fmtR(c.meta) + '</div>' : '') +
           (resp ? '<div style="margin-top:8px"><span style="display:inline-block;padding:3px 14px;border-radius:20px;font-size:12px;font-weight:600;background:rgba(255,255,255,0.2);color:#fff"><i class="ph ph-user" style="margin-right:5px"></i>' + resp.nome + '</span></div>' : '') +
         '</div>' +
-        '<button id="btn-add-lanc-cx" class="cx-btn-ghost"><i class="ph ph-plus"></i> Lançamento</button>' +
+        '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">' +
+          '<button id="btn-add-lanc-cx" class="cx-btn-ghost"><i class="ph ph-plus"></i> Lançamento</button>' +
+          '<button id="btn-transferir-cx" class="cx-btn-ghost" style="font-size:13px"><i class="ph ph-arrows-left-right"></i> Transferir</button>' +
+        '</div>' +
       '</div>' +
 
       '<div class="section-box" style="margin-top:18px">' +
         '<div class="section-box-header">' +
           '<h2>Lançamentos &nbsp;' + filtroTag + '</h2>' +
-          '<div style="display:flex;gap:8px">' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+            '<button id="btn-transferir-cx2" style="background:#f0f9ff;color:#0284c7;border:none;border-radius:8px;padding:5px 14px;cursor:pointer;font-size:12px;font-weight:600"><i class="ph ph-arrows-left-right" style="margin-right:4px"></i>Transferir</button>' +
             '<button id="btn-editar-cx" style="background:var(--color-primary-light);color:var(--color-primary);border:none;border-radius:8px;padding:5px 14px;cursor:pointer;font-size:12px;font-weight:600"><i class="ph ph-pencil" style="margin-right:4px"></i>Editar</button>' +
+            ocultaBtnHTML +
             '<button id="btn-excluir-cx" style="background:var(--color-expense-bg);color:var(--color-expense);border:none;border-radius:8px;padding:5px 14px;cursor:pointer;font-size:12px;font-weight:600">Excluir Caixinha</button>' +
           '</div>' +
         '</div>' +
@@ -463,7 +678,9 @@ Router.register('caixinhas', function (container) {
   function bindMain() {
     document.getElementById('btn-nova-cx').addEventListener('click', abrirModalCaixinha);
 
-    // Event delegation: clique em qualquer cx-card-inner em qualquer grupo
+    var btnOcultas = document.getElementById('btn-ver-ocultas');
+    if (btnOcultas) btnOcultas.addEventListener('click', abrirModalOcultas);
+
     document.getElementById('cx-view').addEventListener('click', function (e) {
       var card = e.target.closest('.cx-card-inner');
       if (!card) return;
@@ -480,6 +697,32 @@ Router.register('caixinhas', function (container) {
     document.getElementById('btn-editar-cx').addEventListener('click', function () {
       abrirModalEditarCaixinha(c);
     });
+
+    // Botão Transferir no header
+    var btnTransfHdr = document.getElementById('btn-transferir-cx');
+    if (btnTransfHdr) btnTransfHdr.addEventListener('click', function () { abrirModalTransferencia(c); });
+
+    // Botão Transferir na tabela
+    var btnTransf2 = document.getElementById('btn-transferir-cx2');
+    if (btnTransf2) btnTransf2.addEventListener('click', function () { abrirModalTransferencia(c); });
+
+    // Botão Ocultar
+    var btnOcultar = document.getElementById('btn-ocultar-cx');
+    if (btnOcultar) {
+      btnOcultar.addEventListener('click', function () {
+        ocultarCaixinha(c.id);
+        voltarParaMain();
+      });
+    }
+
+    // Botão Mostrar (quando já está oculta)
+    var btnMostrar = document.getElementById('btn-mostrar-cx');
+    if (btnMostrar) {
+      btnMostrar.addEventListener('click', function () {
+        mostrarCaixinhaId(c.id);
+        renderDetalhe(c, false);
+      });
+    }
 
     document.getElementById('btn-excluir-cx').addEventListener('click', async function () {
       if (!confirm('Excluir a caixinha "' + c.nome + '"?\nTodos os lançamentos serão perdidos.')) return;
