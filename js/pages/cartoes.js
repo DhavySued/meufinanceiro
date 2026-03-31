@@ -889,6 +889,7 @@ Router.register('cartoes', function (container) {
             '<div class="form-group">' +
               '<label>Categoria</label>' +
               '<select id="lc-cat">' +
+                '<option value="">— Selecione —</option>' +
                 AppData.categorias.map(function (c) {
                   return '<option value="' + c.nome + '">' + c.nome + '</option>';
                 }).join('') +
@@ -1171,8 +1172,17 @@ Router.register('cartoes', function (container) {
         alert('Preencha a descrição e o valor corretamente.');
         return;
       }
-      if (document.getElementById('lc-dividido').checked && f.splits.length === 0) {
+      if (!f.cat) {
+        alert('Selecione uma categoria.');
+        return;
+      }
+      var dividido = document.getElementById('lc-dividido').checked;
+      if (dividido && f.splits.length === 0) {
         alert('Selecione ao menos um responsável para dividir.');
+        return;
+      }
+      if (!dividido && !f.respId) {
+        alert('Selecione um responsável.');
         return;
       }
 
