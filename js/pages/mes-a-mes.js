@@ -52,6 +52,7 @@ Router.register('mes-a-mes', function (container) {
         concilCount: concilCount,
         totalLancs:  lancs.length,
         todoConcil:  lancs.length > 0 && concilCount === lancs.length,
+        ckKey:   'c_' + c.id,
       };
     });
   }
@@ -157,7 +158,7 @@ Router.register('mes-a-mes', function (container) {
 
     function getReceitasQz() {
       var ganhos = (resp.ganhos || []).map(function (g, i) {
-        return { desc: g.desc, valor: g.valor, dia: g.dia || 1, isReceita: true, gIdx: i };
+        return { desc: g.desc, valor: g.valor, dia: g.dia || 1, isReceita: true, gIdx: i, ckKey: 'r_' + i };
       });
       return {
         q1: ganhos.filter(function (g) { return g.dia <= 15; }),
@@ -167,6 +168,20 @@ Router.register('mes-a-mes', function (container) {
 
     var modalGasto   = criarModalGasto();
     var qzPendente   = 1;
+
+    // ── Check de conclusão por linha (localStorage, sem backend) ──
+    var CHECKS_LS = 'mf_dre_checks';
+    function getAllChecks() {
+      try { return JSON.parse(localStorage.getItem(CHECKS_LS) || '{}'); } catch(e) { return {}; }
+    }
+    function rowKey(ckKey) { return respId + '_' + mesIdx + '_' + ckKey; }
+    function isChecked(ckKey) { return !!getAllChecks()[rowKey(ckKey)]; }
+    function toggleCheck(ckKey) {
+      var all = getAllChecks();
+      var k   = rowKey(ckKey);
+      if (all[k]) delete all[k]; else all[k] = true;
+      localStorage.setItem(CHECKS_LS, JSON.stringify(all));
+    }
 
     function abrirModalGasto(qz) {
       qzPendente = qz;
@@ -237,22 +252,38 @@ Router.register('mes-a-mes', function (container) {
           valor: excedeu ? excesso : restante,   // excedeu → excesso na coluna; senão → saldo restante
           gasto: gasto,
           locked: true, isMeta: true, limite: m.limite, restante: restante, excedeu: excedeu, excesso: excesso,
+          ckKey: 'o_' + m.catNome,
         });
       });
 
       // 3. Despesas fixas do responsável — quinzena configurada
       (resp.despesasFixas || []).forEach(function (d, i) {
-        var item = { desc: d.desc, valor: d.valor, locked: false, isFixed: true, fixIdx: i };
+        var item = { desc: d.desc, valor: d.valor, locked: false, isFixed: true, fixIdx: i, ckKey: 'f_' + i };
         if (d.quinzena === 1) despQ1.push(item); else despQ2.push(item);
       });
 
       // 4. Gastos manuais adicionados na DRE
       AppData.getDespesasManuais(mesIdx, respId).forEach(function (d) {
-        var item = { desc: d.desc, valor: d.valor, locked: false, id: d.id };
+        var item = { desc: d.desc, valor: d.valor, locked: false, id: d.id, ckKey: 'm_' + d.id };
         if (d.quinzena === 1) despQ1.push(item); else despQ2.push(item);
       });
 
       return { despQ1: despQ1, despQ2: despQ2 };
+    }
+
+    function ckBox(ckKey) {
+      var chk = isChecked(ckKey);
+      return '<input type="checkbox" class="dre-row-check" data-ck="' + ckKey + '"' +
+        (chk ? ' checked' : '') +
+        ' style="width:15px;height:15px;accent-color:#10b981;flex-shrink:0;cursor:pointer;margin:0 6px 0 0" />';
+    }
+
+    function doneTrStyle(ckKey) {
+      return isChecked(ckKey) ? ' style="opacity:0.45"' : '';
+    }
+
+    function doneDescStyle(ckKey) {
+      return isChecked(ckKey) ? ' style="text-decoration:line-through"' : '';
     }
 
     function itemRows(itens, cls) {
@@ -261,6 +292,7 @@ Router.register('mes-a-mes', function (container) {
       }
 
       return itens.map(function (x) {
+        var ck = x.ckKey || '';
         if (x.isMeta) {
           var pct      = x.limite > 0 ? Math.min(Math.round((x.gasto / x.limite) * 100), 100) : 0;
           var corBarra = pct < 70 ? '#10b981' : pct < 90 ? '#f59e0b' : '#ef4444';
@@ -271,9 +303,10 @@ Router.register('mes-a-mes', function (container) {
             ? '<span style="color:#dc2626;font-weight:700;font-size:13px">+' + fmtR(x.excesso) + '</span>' +
               '<span style="display:block;font-size:10px;color:#dc2626;opacity:0.75;margin-top:1px">excesso</span>'
             : '<span class="' + cls + '">' + fmtR(x.valor) + '</span>';
-          return '<tr class="dre-row dre-meta-row' + (x.excedeu ? ' dre-meta-excedida' : '') + '">' +
+          return '<tr class="dre-row dre-meta-row' + (x.excedeu ? ' dre-meta-excedida' : '') + '"' + doneTrStyle(ck) + '>' +
             '<td class="dre-td">' +
-              '<div class="dre-meta-info">' +
+              ckBox(ck) +
+              '<div class="dre-meta-info"' + doneDescStyle(ck) + '>' +
                 '<i class="ph ph-lock-simple" style="opacity:0.35;font-size:11px" title="Orçamento provisionado"></i>' +
                 '<span>' + x.desc + '</span>' +
                 '<span class="dre-meta-gasto">gasto ' + fmtR(x.gasto) + '</span>' +
@@ -285,8 +318,11 @@ Router.register('mes-a-mes', function (container) {
           '</tr>';
         }
         if (x.isReceita) {
-          return '<tr class="dre-row">' +
-            '<td class="dre-td">' + x.desc + '</td>' +
+          return '<tr class="dre-row"' + doneTrStyle(ck) + '>' +
+            '<td class="dre-td">' +
+              ckBox(ck) +
+              '<span' + doneDescStyle(ck) + '>' + x.desc + '</span>' +
+            '</td>' +
             '<td class="dre-td-val">' +
               '<span class="' + cls + '">' + fmtR(x.valor) + '</span>' +
               makeButtons('data-type="receita" data-gidx="' + x.gIdx + '"') +
@@ -294,9 +330,12 @@ Router.register('mes-a-mes', function (container) {
           '</tr>';
         }
         if (x.isFixed) {
-          return '<tr class="dre-row">' +
+          return '<tr class="dre-row"' + doneTrStyle(ck) + '>' +
             '<td class="dre-td">' +
-              '<i class="ph ph-push-pin" style="margin-right:4px;font-size:11px;color:var(--color-muted)" title="Despesa fixa"></i>' + x.desc +
+              ckBox(ck) +
+              '<span' + doneDescStyle(ck) + '>' +
+                '<i class="ph ph-push-pin" style="margin-right:4px;font-size:11px;color:var(--color-muted)" title="Despesa fixa"></i>' + x.desc +
+              '</span>' +
             '</td>' +
             '<td class="dre-td-val">' +
               '<span class="' + cls + '">' + fmtR(x.valor) + '</span>' +
@@ -305,8 +344,11 @@ Router.register('mes-a-mes', function (container) {
           '</tr>';
         }
         if (!x.locked) {
-          return '<tr class="dre-row">' +
-            '<td class="dre-td">' + x.desc + '</td>' +
+          return '<tr class="dre-row"' + doneTrStyle(ck) + '>' +
+            '<td class="dre-td">' +
+              ckBox(ck) +
+              '<span' + doneDescStyle(ck) + '>' + x.desc + '</span>' +
+            '</td>' +
             '<td class="dre-td-val">' +
               '<span class="' + cls + '">' + fmtR(x.valor) + '</span>' +
               makeButtons('data-type="despesa" data-id="' + x.id + '"') +
@@ -320,10 +362,14 @@ Router.register('mes-a-mes', function (container) {
           : '';
         var corBorda  = x.cor ? x.cor : '#6366f1';
         var corFundo  = x.cor ? x.cor + '12' : 'transparent';
-        return '<tr class="dre-row' + (x.todoConcil ? ' tr-conciliado' : '') + '" style="border-left:3px solid ' + corBorda + ';background:' + corFundo + '">' +
+        var trStyle = 'border-left:3px solid ' + corBorda + ';background:' + corFundo + (isChecked(ck) ? ';opacity:0.45' : '');
+        return '<tr class="dre-row' + (x.todoConcil ? ' tr-conciliado' : '') + '" style="' + trStyle + '">' +
           '<td class="dre-td" style="padding-left:13px">' +
-            '<span class="dre-cartao-dot" style="background:' + corBorda + '"></span>' +
-            x.desc + concilBadge +
+            ckBox(ck) +
+            '<span' + doneDescStyle(ck) + '>' +
+              '<span class="dre-cartao-dot" style="background:' + corBorda + '"></span>' +
+              x.desc + concilBadge +
+            '</span>' +
           '</td>' +
           '<td class="dre-td-val"><span class="' + cls + '">' + fmtR(x.valor) + '</span></td>' +
         '</tr>';
@@ -475,6 +521,26 @@ Router.register('mes-a-mes', function (container) {
             '</tbody>' +
           '</table>' +
         '</div>';
+
+      // Delegação de checkboxes de conclusão por linha
+      el.addEventListener('change', function (e) {
+        var cb = e.target.closest('.dre-row-check');
+        if (!cb) return;
+        toggleCheck(cb.dataset.ck);
+        var tr = cb.closest('tr');
+        if (!tr) return;
+        var done = isChecked(cb.dataset.ck);
+        tr.style.opacity = done ? '0.45' : '';
+        var descEl = tr.querySelector('span[style*="line-through"], span:not([style])');
+        // aplica/remove line-through no span de descrição
+        tr.querySelectorAll('td.dre-td > span').forEach(function (s) {
+          if (s.classList.contains('dre-row-check')) return;
+          s.style.textDecoration = done ? 'line-through' : '';
+        });
+        tr.querySelectorAll('td.dre-td .dre-meta-info').forEach(function (s) {
+          s.style.textDecoration = done ? 'line-through' : '';
+        });
+      });
 
       // Delegação de cliques no conteúdo da DRE
       el.onclick = async function (e) {
