@@ -169,19 +169,9 @@ Router.register('mes-a-mes', function (container) {
     var modalGasto   = criarModalGasto();
     var qzPendente   = 1;
 
-    // ── Check de conclusão por linha (localStorage, sem backend) ──
-    var CHECKS_LS = 'mf_dre_checks';
-    function getAllChecks() {
-      try { return JSON.parse(localStorage.getItem(CHECKS_LS) || '{}'); } catch(e) { return {}; }
-    }
-    function rowKey(ckKey) { return respId + '_' + mesIdx + '_' + ckKey; }
-    function isChecked(ckKey) { return !!getAllChecks()[rowKey(ckKey)]; }
-    function toggleCheck(ckKey) {
-      var all = getAllChecks();
-      var k   = rowKey(ckKey);
-      if (all[k]) delete all[k]; else all[k] = true;
-      localStorage.setItem(CHECKS_LS, JSON.stringify(all));
-    }
+    // ── Check de conclusão por linha (Supabase) ──
+    function isChecked(ckKey) { return AppData.isDreChecked(respId, mesIdx, ckKey); }
+    async function toggleCheck(ckKey) { return await AppData.toggleDreCheck(respId, mesIdx, ckKey); }
 
     function abrirModalGasto(qz) {
       qzPendente = qz;
@@ -523,10 +513,12 @@ Router.register('mes-a-mes', function (container) {
         '</div>';
 
       // Delegação de checkboxes de conclusão por linha
-      el.addEventListener('change', function (e) {
+      el.addEventListener('change', async function (e) {
         var cb = e.target.closest('.dre-row-check');
         if (!cb) return;
-        toggleCheck(cb.dataset.ck);
+        cb.disabled = true;
+        await toggleCheck(cb.dataset.ck);
+        cb.disabled = false;
         var tr = cb.closest('tr');
         if (!tr) return;
         var done = isChecked(cb.dataset.ck);
