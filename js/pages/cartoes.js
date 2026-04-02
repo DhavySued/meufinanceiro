@@ -425,6 +425,10 @@ Router.register('cartoes', function (container) {
                 'border-radius:20px;padding:2px 9px;font-weight:600;vertical-align:middle;display:inline-block">' +
                 'Compra parcelada ' + l.parcela + '/' + l.totalParcelas + '</span>'
               : '';
+            var tagDividido = l.isDividido
+              ? ' <span style="font-size:11px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;' +
+                'border-radius:20px;padding:2px 9px;font-weight:600;vertical-align:middle;display:inline-block">Dividido</span>'
+              : '';
             var catEscR  = (l.cat || '').replace(/"/g, '&quot;');
             var respRowN = l.isDividido && l.splits && l.splits.length
               ? l.splits.map(function (s) { return s.respNome; }).join(' / ')
@@ -438,7 +442,7 @@ Router.register('cartoes', function (container) {
                   (l.conciliado ? ' checked' : '') + ' title="Marcar como conferido"></td>' +
               '<td style="text-align:center;color:var(--color-muted);font-size:10px;letter-spacing:0.01em;opacity:0.6">' + l.id + '</td>' +
               '<td style="color:var(--color-muted);font-size:13px;white-space:nowrap">' + l.data + '</td>' +
-              '<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><strong>' + l.desc + '</strong>' + tagParcelada + '</td>' +
+              '<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><strong>' + l.desc + '</strong>' + tagParcelada + tagDividido + '</td>' +
               '<td style="color:var(--color-muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (l.cat || '—') + '</td>' +
               '<td style="color:var(--color-muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
                 (l.responsavelNome || '—') +
@@ -1231,10 +1235,15 @@ Router.register('cartoes', function (container) {
       return '<option value="' + cat.nome + '">' + cat.nome + '</option>';
     }).join('');
 
-    var optsRespAdiant = '<option value="">— Sem responsável —</option>' +
-      AppData.responsaveis.map(function (r) {
-        return '<option value="' + r.id + '" data-nome="' + r.nome.replace(/"/g, '&quot;') + '">' + r.nome + '</option>';
-      }).join('');
+    var checksRespAdiant = AppData.responsaveis.map(function (r) {
+      return '<label style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;padding:6px 0;border-bottom:1px solid var(--color-border)">' +
+        '<span style="display:flex;align-items:center;gap:8px">' +
+          '<input type="checkbox" class="adiant-resp-check" data-id="' + r.id + '" data-nome="' + r.nome.replace(/"/g, '&quot;') + '" style="width:15px;height:15px;accent-color:var(--color-primary)" />' +
+          r.nome +
+        '</span>' +
+        '<span class="adiant-resp-val" data-id="' + r.id + '" style="font-size:13px;color:var(--color-muted)">—</span>' +
+      '</label>';
+    }).join('');
 
     var modalAdiant = document.createElement('div');
     modalAdiant.className = 'modal-overlay';
@@ -1252,7 +1261,7 @@ Router.register('cartoes', function (container) {
               '<input type="date" id="adiant-data" />' +
             '</div>' +
             '<div class="form-group">' +
-              '<label>Valor (R$)</label>' +
+              '<label>Valor total (R$)</label>' +
               '<input type="number" id="adiant-valor" placeholder="0,00" min="0" step="0.01" />' +
             '</div>' +
           '</div>' +
@@ -1260,14 +1269,16 @@ Router.register('cartoes', function (container) {
             '<label>Descrição</label>' +
             '<input type="text" id="adiant-desc" placeholder="Ex: Adiantamento fatura" />' +
           '</div>' +
-          '<div class="form-row">' +
-            '<div class="form-group">' +
-              '<label>Categoria</label>' +
-              '<select id="adiant-cat">' + optsCategoriasAdiant + '</select>' +
-            '</div>' +
-            '<div class="form-group">' +
-              '<label>Responsável</label>' +
-              '<select id="adiant-resp">' + optsRespAdiant + '</select>' +
+          '<div class="form-group">' +
+            '<label>Categoria</label>' +
+            '<select id="adiant-cat">' + optsCategoriasAdiant + '</select>' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>Responsáveis</label>' +
+            '<div style="background:#f8fafc;border:1px solid var(--color-border);border-radius:10px;padding:14px">' +
+              '<div style="font-size:12px;font-weight:600;color:var(--color-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Selecione um ou mais responsáveis · o valor será dividido igualmente</div>' +
+              checksRespAdiant +
+              '<div id="adiant-split-resumo" style="font-size:13px;color:var(--color-primary);font-weight:600;margin-top:10px"></div>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -1278,17 +1289,38 @@ Router.register('cartoes', function (container) {
       '</div>';
     document.body.appendChild(modalAdiant);
 
+    function atualizarAdiantPreview() {
+      var valor = parseFloat(document.getElementById('adiant-valor').value) || 0;
+      var checked = document.querySelectorAll('.adiant-resp-check:checked');
+      var n = checked.length;
+      var valorPorPessoa = n > 0 ? Math.round((valor / n) * 100) / 100 : 0;
+      document.querySelectorAll('.adiant-resp-val').forEach(function (span) {
+        var isChk = !!document.querySelector('.adiant-resp-check[data-id="' + span.dataset.id + '"]:checked');
+        span.textContent = isChk && n > 0 ? fmtR(valorPorPessoa) : '—';
+      });
+      document.getElementById('adiant-split-resumo').textContent = n > 0 && valor > 0
+        ? n + ' responsável(is) · ' + fmtR(valorPorPessoa) + ' cada · total ' + fmtR(valorPorPessoa * n)
+        : '';
+    }
+
     function abrirAdiantamento() {
       var mm = String(filtroMesIdx + 1).padStart(2, '0');
       document.getElementById('adiant-data').value  = AppState.ano + '-' + mm + '-01';
       document.getElementById('adiant-valor').value = '';
       document.getElementById('adiant-desc').value  = '';
       document.getElementById('adiant-cat').selectedIndex = 0;
-      document.getElementById('adiant-resp').value  = '';
+      document.querySelectorAll('.adiant-resp-check').forEach(function (cb) { cb.checked = false; });
+      document.querySelectorAll('.adiant-resp-val').forEach(function (s) { s.textContent = '—'; });
+      document.getElementById('adiant-split-resumo').textContent = '';
       modalAdiant.classList.add('open');
     }
 
     function fecharModalAdiant() { modalAdiant.classList.remove('open'); }
+
+    document.getElementById('adiant-valor').addEventListener('input', atualizarAdiantPreview);
+    modalAdiant.querySelectorAll('.adiant-resp-check').forEach(function (cb) {
+      cb.addEventListener('change', atualizarAdiantPreview);
+    });
 
     document.getElementById('btn-fechar-adiant').addEventListener('click', fecharModalAdiant);
     document.getElementById('btn-cancelar-adiant').addEventListener('click', fecharModalAdiant);
@@ -1299,38 +1331,44 @@ Router.register('cartoes', function (container) {
       var valor    = parseFloat(document.getElementById('adiant-valor').value);
       var desc     = document.getElementById('adiant-desc').value.trim();
       var cat      = document.getElementById('adiant-cat').value;
-      var selResp  = document.getElementById('adiant-resp');
-      var respId   = selResp.value ? parseInt(selResp.value) : null;
-      var respNome = selResp.value ? selResp.options[selResp.selectedIndex].dataset.nome : null;
+      var checked  = Array.from(document.querySelectorAll('.adiant-resp-check:checked'));
 
       if (!desc || isNaN(valor) || valor <= 0) {
         alert('Preencha a descrição e o valor corretamente.');
         return;
       }
       if (!dataISO) { alert('Informe a data.'); return; }
+      if (checked.length === 0) { alert('Selecione ao menos um responsável.'); return; }
 
       var d      = dataISO.split('-');
       var dmy    = d[2] + '/' + d[1] + '/' + d[0];
       var mesRef = d[0] + '-' + d[1];
+      var n      = checked.length;
+      var valorPorPessoa = Math.round((valor / n) * 100) / 100;
+      var isDividido = n > 1;
 
       try {
-        await AppData.addLancamento({
-          data:            dmy,
-          mes_referencia:  mesRef,
-          desc:            desc,
-          cat:             cat,
-          valor:           valor,
-          tipo:            'receita',
-          cartaoId:        c.id,
-          cartaoNome:      c.nome,
-          responsavelId:   respId,
-          responsavelNome: respNome,
-          conciliado:      false
-        });
+        for (var i = 0; i < checked.length; i++) {
+          var cb = checked[i];
+          await AppData.addLancamento({
+            data:            dmy,
+            mes_referencia:  mesRef,
+            desc:            desc,
+            cat:             cat,
+            valor:           valorPorPessoa,
+            tipo:            'receita',
+            cartaoId:        c.id,
+            cartaoNome:      c.nome,
+            responsavelId:   parseInt(cb.dataset.id),
+            responsavelNome: cb.dataset.nome,
+            isDividido:      isDividido,
+            conciliado:      false
+          });
+        }
         fecharModalAdiant();
         renderTabela();
         atualizarFaturaCard();
-        mostrarToast('Adiantamento registrado!');
+        mostrarToast(isDividido ? 'Adiantamento dividido entre ' + n + ' responsáveis!' : 'Adiantamento registrado!');
       } catch (err) {
         console.error('Erro ao salvar adiantamento:', err);
         alert('Erro ao salvar: ' + (err.message || JSON.stringify(err)));
