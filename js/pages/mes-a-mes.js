@@ -287,14 +287,10 @@ Router.register('mes-a-mes', function (container) {
           var pct      = x.limite > 0 ? Math.min(Math.round((x.gasto / x.limite) * 100), 100) : 0;
           var corBarra = pct < 70 ? '#10b981' : pct < 90 ? '#f59e0b' : '#ef4444';
           var saldoTxt = x.excedeu
-            ? '<span class="dre-meta-excedeu">⚠ limite ' + fmtR(x.limite) + '</span>'
+            ? '<span class="dre-meta-excedeu">⚠ excedeu ' + fmtR(x.excesso) + ' · limite ' + fmtR(x.limite) + '</span>'
             : '<span class="dre-meta-ok">resta ' + fmtR(x.restante) + '</span>';
-          var colValor = x.excedeu
-            ? '<span style="color:#dc2626;font-weight:700;font-size:13px">+' + fmtR(x.excesso) + '</span>' +
-              '<span style="display:block;font-size:10px;color:#dc2626;opacity:0.75;margin-top:1px">excesso</span>'
-            : '<span class="' + cls + '">' + fmtR(x.valor) + '</span>';
           return '<tr class="dre-row dre-meta-row' + (x.excedeu ? ' dre-meta-excedida' : '') + '"' + doneTrStyle(ck) + '>' +
-            '<td class="dre-td">' +
+            '<td class="dre-td" colspan="2">' +
               ckBox(ck) +
               '<div class="dre-meta-info"' + doneDescStyle(ck) + '>' +
                 '<i class="ph ph-lock-simple" style="opacity:0.35;font-size:11px" title="Orçamento provisionado"></i>' +
@@ -304,7 +300,6 @@ Router.register('mes-a-mes', function (container) {
               '</div>' +
               '<div class="dre-mini-bar"><div style="height:100%;width:' + pct + '%;background:' + corBarra + ';border-radius:3px"></div></div>' +
             '</td>' +
-            '<td class="dre-td-val dre-td-val-top">' + colValor + '</td>' +
           '</tr>';
         }
         if (x.isReceita) {
