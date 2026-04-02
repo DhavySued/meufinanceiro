@@ -289,8 +289,7 @@ Router.register('mes-a-mes', function (container) {
           var saldoTxt = x.excedeu
             ? '<span class="dre-meta-excedeu">⚠ excedeu ' + fmtR(x.excesso) + ' · limite ' + fmtR(x.limite) + '</span>'
             : '<span class="dre-meta-ok">resta ' + fmtR(x.restante) + '</span>';
-          return '<tr class="dre-row dre-meta-row' + (x.excedeu ? ' dre-meta-excedida' : '') + '"' + doneTrStyle(ck) + '>' +
-            '<td class="dre-td" colspan="2">' +
+          var tdInfo = '<td class="dre-td"' + (x.excedeu ? ' colspan="2"' : '') + '>' +
               ckBox(ck) +
               '<div class="dre-meta-info"' + doneDescStyle(ck) + '>' +
                 '<i class="ph ph-lock-simple" style="opacity:0.35;font-size:11px" title="Orçamento provisionado"></i>' +
@@ -299,7 +298,10 @@ Router.register('mes-a-mes', function (container) {
                 saldoTxt +
               '</div>' +
               '<div class="dre-mini-bar"><div style="height:100%;width:' + pct + '%;background:' + corBarra + ';border-radius:3px"></div></div>' +
-            '</td>' +
+            '</td>';
+          var tdValor = x.excedeu ? '' : '<td class="dre-td-val dre-td-val-top"><span class="' + cls + '">' + fmtR(x.restante) + '</span></td>';
+          return '<tr class="dre-row dre-meta-row' + (x.excedeu ? ' dre-meta-excedida' : '') + '"' + doneTrStyle(ck) + '>' +
+            tdInfo + tdValor +
           '</tr>';
         }
         if (x.isReceita) {
