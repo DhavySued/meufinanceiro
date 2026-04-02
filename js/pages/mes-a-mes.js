@@ -239,7 +239,7 @@ Router.register('mes-a-mes', function (container) {
         var excesso  = excedeu ? gasto - m.limite : 0;
         despQ2.push({
           desc: m.catNome,
-          valor: excedeu ? excesso : restante,   // excedeu → excesso na coluna; senão → saldo restante
+          valor: excedeu ? 0 : restante,   // excedeu → não conta no total (exibição usa x.excesso); senão → saldo restante
           gasto: gasto,
           locked: true, isMeta: true, limite: m.limite, restante: restante, excedeu: excedeu, excesso: excesso,
           ckKey: 'o_' + m.catNome,
