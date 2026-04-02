@@ -1017,16 +1017,16 @@ Router.register('cartoes', function (container) {
     }
 
     function atualizarSplitPreview() {
-      var valorInd = parseFloat(document.getElementById('lc-valor').value) || 0;
-      var checked  = document.querySelectorAll('.lc-split-check:checked');
-      var n        = checked.length;
-      var totalDiv = Math.round(valorInd * n * 100) / 100;
+      var valorTotal = parseFloat(document.getElementById('lc-valor').value) || 0;
+      var checked    = document.querySelectorAll('.lc-split-check:checked');
+      var n          = checked.length;
+      var valorPorPessoa = n > 0 ? Math.round((valorTotal / n) * 100) / 100 : 0;
       document.querySelectorAll('.lc-split-val').forEach(function (span) {
         var isChk = !!document.querySelector('.lc-split-check[data-id="' + span.dataset.id + '"]:checked');
-        span.textContent = isChk && n > 0 ? fmtR(valorInd) : '—';
+        span.textContent = isChk && n > 0 ? fmtR(valorPorPessoa) : '—';
       });
       document.getElementById('lc-split-resumo').textContent = n > 0
-        ? n + ' responsável(is) · ' + fmtR(valorInd) + ' cada · total ' + fmtR(totalDiv)
+        ? n + ' responsável(is) · ' + fmtR(valorPorPessoa) + ' cada · total ' + fmtR(valorTotal)
         : '';
     }
 
@@ -1131,6 +1131,7 @@ Router.register('cartoes', function (container) {
           responsavelNome: respNome || null,
           parcela:         numParcela,
           totalParcelas:   f.parcelas,
+          isDividido:      f.isDividido && f.splits.length > 0,
           conciliado:      false
         };
       }
@@ -1142,10 +1143,11 @@ Router.register('cartoes', function (container) {
           var offset = p - f.parcelaIni; // 0 na primeira parcela, +1 por mês
 
           if (f.isDividido && f.splits.length > 0) {
-            // Divide: cria um lançamento por responsável com o valor individual (sem dividir novamente)
+            // Divide: valor da parcela dividido igualmente entre os responsáveis
+            var valorPorSplit = Math.round((valorParcela / f.splits.length) * 100) / 100;
             for (var si = 0; si < f.splits.length; si++) {
               var s = f.splits[si];
-              await AppData.addLancamento(buildLanc(offset, p, s.respId, s.respNome, valorParcela));
+              await AppData.addLancamento(buildLanc(offset, p, s.respId, s.respNome, valorPorSplit));
             }
           } else {
             await AppData.addLancamento(buildLanc(offset, p, f.respId, f.respNome, valorParcela));
