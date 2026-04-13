@@ -175,8 +175,10 @@ var AppData = (function () {
           ? l.desc + ' (' + p + '/' + l.totalParcelas + ')'
           : l.desc;
 
+        var mesRef = d.getFullYear() + '-' + mm;
         var novo = await api.addLancamento({
           data:            dataParc,
+          mes_referencia:  mesRef,
           desc:            descParc,
           cat:             l.cat,
           cartaoId:        l.cartaoId,
@@ -219,8 +221,15 @@ var AppData = (function () {
     },
 
     // ── Retorna a competência YYYY-MM de um lançamento ──────
+    // A partir do ID 700: usa mes_referencia como fonte da competência.
+    // Antes do ID 700 (lançamentos antigos): deriva a competência pelo campo data.
     getMesRef: function (l) {
-      if (l && l.mes_referencia) return l.mes_referencia;
+      if (l && l.id >= 700 && l.mes_referencia) {
+        var ref = String(l.mes_referencia);
+        // Normaliza 'YYYY-MM-DD' (coluna date Supabase) → 'YYYY-MM'
+        if (ref.length >= 7 && ref.charAt(4) === '-') return ref.slice(0, 7);
+        return ref;
+      }
       if (l && l.data) {
         var p = l.data.split('/');
         if (p.length === 3) return p[2] + '-' + p[1];

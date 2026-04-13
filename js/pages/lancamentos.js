@@ -72,7 +72,15 @@ Router.register('lancamentos', function (container) {
       '<path d="M1.5 2h13l-5 6v5l-3-1.5V8L1.5 2z"/>' +
     '</svg>';
 
-  var rowsHTML = AppData.getLancamentos().map(buildRow).join('');
+  function getLancamentosMes() {
+    var mesNum = String(AppState.mesIdx + 1).padStart(2, '0');
+    var mesRef = String(AppState.ano) + '-' + mesNum;
+    return AppData.getLancamentos().filter(function (l) {
+      return AppData.getMesRef(l) === mesRef;
+    });
+  }
+
+  var rowsHTML = getLancamentosMes().map(buildRow).join('');
 
   container.innerHTML =
     '<div class="page-header">' +
@@ -144,7 +152,7 @@ Router.register('lancamentos', function (container) {
   function abrirDropdownFiltro(th, col) {
     fecharDropdown();
 
-    var todas = AppData.getLancamentos();
+    var todas = getLancamentosMes();
     var opts = [];
 
     if (col === 'resp') {
@@ -414,7 +422,9 @@ Router.register('lancamentos', function (container) {
         responsavelId:   respId,
         responsavelNome: respNome,
       });
+      var mesRefAtual = String(AppState.ano) + '-' + String(AppState.mesIdx + 1).padStart(2, '0');
       criados.forEach(function (novo) {
+        if (AppData.getMesRef(novo) !== mesRefAtual) return;
         document.getElementById('tbody-lancamentos').insertAdjacentHTML('afterbegin', buildRow(novo));
       });
     } else {

@@ -259,11 +259,11 @@ Router.register('cartoes', function (container) {
 
     function getLancs() {
       var mesNum = String(filtroMesIdx + 1).padStart(2, '0');
+      var mesRef = String(AppState.ano) + '-' + mesNum;
       return AppData.getLancamentos().filter(function (l) {
         if (!l) return false;
         if (l.cartaoId !== c.id && l.cartaoNome !== c.nome) return false;
-        var partes = l.data.split('/');
-        if (partes[1] !== mesNum) return false;
+        if (AppData.getMesRef(l) !== mesRef) return false;
         if (filtroRespId === 'todos') return true;
         return String(l.responsavelId) === filtroRespId;
       });
@@ -580,6 +580,11 @@ Router.register('cartoes', function (container) {
         });
       }
 
+      if (btnExcluirSel) {
+        btnExcluirSel.disabled = false;
+        btnExcluirSel.textContent = 'Excluir Selecionados';
+      }
+      atualizarBarra();
       atualizarFaturaCard();
     }
 
@@ -1112,15 +1117,18 @@ Router.register('cartoes', function (container) {
     async function confirmarEtSalvar(f, replicar) {
       var valorParcela = Math.round((f.total / f.parcelas) * 100) / 100;
 
-      // Monta um lançamento simples — data original fixa; mes_referencia avança por parcela
+      // Monta um lançamento por parcela — data e mes_referencia avançam um mês por offset
       function buildLanc(offset, numParcela, respId, respNome, valor) {
         // Competência = mês selecionado no filtro + offset da parcela
         var baseAno = AppState.ano;
         var baseMes = filtroMesIdx; // 0-indexed
         var d       = new Date(baseAno, baseMes + offset, 1);
-        var mesRef  = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        var yyyy    = d.getFullYear();
+        var mm      = String(d.getMonth() + 1).padStart(2, '0');
+        var mesRef  = yyyy + '-' + mm;
+        var dataISO = yyyy + '-' + mm + '-01'; // primeiro dia do mês da parcela
         return {
-          data:            f.dataISO,   // data original do registro (fixa para todas as parcelas)
+          data:            dataISO,
           mes_referencia:  mesRef,
           desc:            f.desc,
           cat:             f.cat,
