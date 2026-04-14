@@ -462,7 +462,18 @@ var AppData = (function () {
         var { data, error } = await db.from('dre_checks')
           .insert({ resp_id: respId, mes_idx: mesIdx, ck_key: ckKey })
           .select().single();
-        if (error) throw error;
+        if (error) {
+          // Registro já existe no banco mas não estava em memória (inconsistência) — apaga
+          if (error.code === '23505') {
+            var { data: found, error: errFind } = await db.from('dre_checks')
+              .select('id').eq('resp_id', respId).eq('mes_idx', mesIdx).eq('ck_key', ckKey).single();
+            if (errFind) throw errFind;
+            var { error: errDel } = await db.from('dre_checks').delete().eq('id', found.id);
+            if (errDel) throw errDel;
+            return false;
+          }
+          throw error;
+        }
         dreChecks.push({ id: data.id, respId: Number(data.resp_id), mesIdx: Number(data.mes_idx), ckKey: data.ck_key });
         return true;
       }
