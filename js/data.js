@@ -59,7 +59,7 @@ var AppData = (function () {
     caixinhas.splice(0,    caixinhas.length,    ...(results[4].data || []));
     importacoes.splice(0,  importacoes.length,  ...(results[5].data || []));
     dreChecks.splice(0, dreChecks.length, ...(results[7].data || []).map(function (r) {
-      return { id: r.id, respId: r.resp_id, mesIdx: r.mes_idx, ckKey: r.ck_key };
+      return { id: r.id, respId: Number(r.resp_id), mesIdx: Number(r.mes_idx), ckKey: r.ck_key };
     }));
 
     var rawManuais = results[6].data || [];
@@ -444,13 +444,13 @@ var AppData = (function () {
     // ── Checks DRE (Supabase) ────────────────────────────────
     isDreChecked: function (respId, mesIdx, ckKey) {
       return dreChecks.some(function (c) {
-        return c.respId === respId && c.mesIdx === mesIdx && c.ckKey === ckKey;
+        return Number(c.respId) === Number(respId) && Number(c.mesIdx) === Number(mesIdx) && c.ckKey === ckKey;
       });
     },
 
     toggleDreCheck: async function (respId, mesIdx, ckKey) {
       var existing = dreChecks.find(function (c) {
-        return c.respId === respId && c.mesIdx === mesIdx && c.ckKey === ckKey;
+        return Number(c.respId) === Number(respId) && Number(c.mesIdx) === Number(mesIdx) && c.ckKey === ckKey;
       });
       if (existing) {
         var { error } = await db.from('dre_checks').delete().eq('id', existing.id);
@@ -463,7 +463,7 @@ var AppData = (function () {
           .insert({ resp_id: respId, mes_idx: mesIdx, ck_key: ckKey })
           .select().single();
         if (error) throw error;
-        dreChecks.push({ id: data.id, respId: data.resp_id, mesIdx: data.mes_idx, ckKey: data.ck_key });
+        dreChecks.push({ id: data.id, respId: Number(data.resp_id), mesIdx: Number(data.mes_idx), ckKey: data.ck_key });
         return true;
       }
     },

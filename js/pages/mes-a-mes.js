@@ -510,17 +510,25 @@ Router.register('mes-a-mes', function (container) {
         '</div>';
 
       // Delegação de checkboxes de conclusão por linha
-      el.addEventListener('change', async function (e) {
+      el.onchange = async function (e) {
         var cb = e.target.closest('.dre-row-check');
         if (!cb) return;
+        var anteriorChecked = !cb.checked; // estado antes do clique
         cb.disabled = true;
-        await toggleCheck(cb.dataset.ck);
+        try {
+          await toggleCheck(cb.dataset.ck);
+        } catch (err) {
+          console.error('[dre-check] erro ao salvar:', err);
+          cb.checked = anteriorChecked; // reverte visualmente
+          cb.disabled = false;
+          alert('Erro ao salvar marcação: ' + (err.message || JSON.stringify(err)));
+          return;
+        }
         cb.disabled = false;
         var tr = cb.closest('tr');
         if (!tr) return;
         var done = isChecked(cb.dataset.ck);
         tr.style.opacity = done ? '0.45' : '';
-        var descEl = tr.querySelector('span[style*="line-through"], span:not([style])');
         // aplica/remove line-through no span de descrição
         tr.querySelectorAll('td.dre-td > span').forEach(function (s) {
           if (s.classList.contains('dre-row-check')) return;
@@ -529,7 +537,7 @@ Router.register('mes-a-mes', function (container) {
         tr.querySelectorAll('td.dre-td .dre-meta-info').forEach(function (s) {
           s.style.textDecoration = done ? 'line-through' : '';
         });
-      });
+      };
 
       // Delegação de cliques no conteúdo da DRE
       el.onclick = async function (e) {
