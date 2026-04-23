@@ -151,12 +151,18 @@ Router.register('cad-responsaveis', function (container) {
   function renderGanhos() {
     var lista = document.getElementById('ganhos-list');
     if (!lista) return;
-    lista.innerHTML = ganhosList.map(function (g, i) {
-      return '<div class="ganho-item">' +
-        '<input class="ganho-desc" type="text" placeholder="Descrição (Ex: Salário)" value="' + (g.desc || '') + '" />' +
-        '<input class="ganho-valor" type="number" placeholder="Valor R$" min="0" step="0.01" value="' + (g.valor || '') + '" />' +
-        '<input class="ganho-dia" type="number" placeholder="Dia" min="1" max="31" value="' + (g.dia || '') + '" title="Dia do mês que recebe" style="width:70px" />' +
-        '<input class="ganho-ate" type="month" value="' + (g.ate || '') + '" title="Válido até (mês/ano)" style="width:140px;padding:8px;border:1px solid var(--color-border);border-radius:8px;font-size:13px" />' +
+    lista.className = 'ganhos-table';
+    var header = ganhosList.length
+      ? '<div class="ganhos-table-header ganho-row-ganhos">' +
+          '<span>Descrição</span><span>Valor R$</span><span>Dia</span><span>Válido até</span><span></span>' +
+        '</div>'
+      : '';
+    lista.innerHTML = header + ganhosList.map(function (g, i) {
+      return '<div class="ganho-item ganho-row-ganhos">' +
+        '<input class="ganho-desc" type="text" placeholder="Ex: Salário" value="' + (g.desc || '') + '" />' +
+        '<input class="ganho-valor" type="number" placeholder="0,00" min="0" step="0.01" value="' + (g.valor || '') + '" />' +
+        '<input class="ganho-dia" type="number" placeholder="Dia" min="1" max="31" value="' + (g.dia || '') + '" />' +
+        '<input class="ganho-ate" type="month" value="' + (g.ate || '') + '" />' +
         '<button class="ganho-del" data-del="' + i + '" title="Remover">&times;</button>' +
       '</div>';
     }).join('');
@@ -184,15 +190,21 @@ Router.register('cad-responsaveis', function (container) {
   function renderFixas() {
     var lista = document.getElementById('fixas-list');
     if (!lista) return;
-    lista.innerHTML = despesasFixas.map(function (d, i) {
-      return '<div class="ganho-item">' +
-        '<input class="fixa-desc" type="text" placeholder="Ex: Conta de Luz" value="' + (d.desc || '') + '" style="flex:2" />' +
-        '<input class="fixa-valor" type="number" placeholder="R$" min="0" step="0.01" value="' + (d.valor || '') + '" />' +
-        '<select class="fixa-qz" style="padding:8px;border:1px solid var(--color-border);border-radius:8px;font-size:13px">' +
+    lista.className = 'ganhos-table';
+    var header = despesasFixas.length
+      ? '<div class="ganhos-table-header ganho-row-fixas">' +
+          '<span>Descrição</span><span>Valor R$</span><span>Quinzena</span><span>Válido até</span><span></span>' +
+        '</div>'
+      : '';
+    lista.innerHTML = header + despesasFixas.map(function (d, i) {
+      return '<div class="ganho-item ganho-row-fixas">' +
+        '<input class="fixa-desc" type="text" placeholder="Ex: Conta de Luz" value="' + (d.desc || '') + '" />' +
+        '<input class="fixa-valor" type="number" placeholder="0,00" min="0" step="0.01" value="' + (d.valor || '') + '" />' +
+        '<select class="fixa-qz">' +
           '<option value="1"' + (d.quinzena === 1 ? ' selected' : '') + '>1ª Quinzena</option>' +
           '<option value="2"' + (d.quinzena !== 1 ? ' selected' : '') + '>2ª Quinzena</option>' +
         '</select>' +
-        '<input class="fixa-ate" type="month" value="' + (d.ate || '') + '" title="Válido até (mês/ano)" style="width:140px;padding:8px;border:1px solid var(--color-border);border-radius:8px;font-size:13px" />' +
+        '<input class="fixa-ate" type="month" value="' + (d.ate || '') + '" />' +
         '<button class="ganho-del" data-del-fixa="' + i + '" title="Remover">&times;</button>' +
       '</div>';
     }).join('');

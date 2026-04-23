@@ -644,7 +644,7 @@ button { cursor: pointer; border: none; background: none; }
 }
 
 /* Modal largo */
-.modal.modal-wide { max-width: 640px; }
+.modal.modal-wide { max-width: 760px; }
 
 /* =====================
    Seção dentro do modal (Fluxo de Caixa)
@@ -694,19 +694,42 @@ button { cursor: pointer; border: none; background: none; }
 }
 
 /* Lista de ganhos no modal */
-.ganhos-list {
+.ganhos-table {
   display: flex;
   flex-direction: column;
+  gap: 6px;
+}
+
+.ganhos-table-header {
+  display: grid;
   gap: 8px;
+  align-items: center;
+  padding: 0 4px 6px;
+  border-bottom: 1.5px solid var(--color-border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ganho-row-ganhos {
+  grid-template-columns: 1fr 110px 60px 145px 32px;
+}
+
+.ganho-row-fixas {
+  grid-template-columns: 1fr 110px 130px 145px 32px;
 }
 
 .ganho-item {
-  display: flex;
+  display: grid;
   gap: 8px;
   align-items: center;
 }
 
-.ganho-item input {
+.ganho-item input,
+.ganho-item select {
+  width: 100%;
   padding: 7px 10px;
   border: 1.5px solid var(--color-border);
   border-radius: 7px;
@@ -715,11 +738,11 @@ button { cursor: pointer; border: none; background: none; }
   background: var(--color-surface);
   outline: none;
   transition: border-color 0.18s;
+  box-sizing: border-box;
 }
 
-.ganho-item input:focus { border-color: var(--color-primary); }
-.ganho-item input.ganho-desc { flex: 1; }
-.ganho-item input.ganho-valor { width: 130px; }
+.ganho-item input:focus,
+.ganho-item select:focus { border-color: var(--color-primary); }
 
 .ganho-del {
   width: 28px;
