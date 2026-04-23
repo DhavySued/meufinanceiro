@@ -252,6 +252,8 @@ var AppData = (function () {
         ganhos:     resp.ganhos     || [],
         despesasFixas: resp.despesasFixas || [],
         orcamentos:    resp.orcamentos    || [],
+        ganhos_mes:         resp.ganhos_mes         || {},
+        despesas_fixas_mes: resp.despesas_fixas_mes || {},
       };
       var { data, error } = await db.from('responsaveis').insert(payload).select().single();
       if (error) throw error;
@@ -268,6 +270,8 @@ var AppData = (function () {
       if (dados.ganhos      !== undefined) payload.ganhos      = dados.ganhos;
       if (dados.despesasFixas !== undefined) payload.despesasFixas = dados.despesasFixas;
       if (dados.orcamentos  !== undefined) payload.orcamentos  = dados.orcamentos;
+      if (dados.ganhos_mes         !== undefined) payload.ganhos_mes         = dados.ganhos_mes;
+      if (dados.despesas_fixas_mes !== undefined) payload.despesas_fixas_mes = dados.despesas_fixas_mes;
       var { data, error } = await db.from('responsaveis').update(payload).eq('id', id).select().single();
       if (error) throw error;
       var idx = responsaveis.findIndex(function (x) { return x.id === id; });

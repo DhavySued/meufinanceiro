@@ -155,11 +155,15 @@ Router.register('mes-a-mes', function (container) {
   function renderDRE(mesIdx, resp) {
     var mesNome = MESES_NOMES[mesIdx] + ' 2026';
     var respId  = resp.id;
+    var mesKey  = '2026-' + String(mesIdx + 1).padStart(2, '0');
 
     function getReceitasQz() {
-      var ganhos = (resp.ganhos || []).map(function (g, i) {
-        return { desc: g.desc, valor: g.valor, dia: g.dia || 1, isReceita: true, gIdx: i, ckKey: 'r_' + i };
-      });
+      var src = ((resp.ganhos_mes || {})[mesKey]) || (resp.ganhos || []);
+      var ganhos = src
+        .filter(function (g) { return !g.ate || mesKey <= g.ate; })
+        .map(function (g, i) {
+          return { desc: g.desc, valor: g.valor, dia: g.dia || 1, isReceita: true, gIdx: i, ckKey: 'r_' + i };
+        });
       return {
         q1: ganhos.filter(function (g) { return g.dia <= 15; }),
         q2: ganhos.filter(function (g) { return g.dia > 15; })
@@ -247,7 +251,9 @@ Router.register('mes-a-mes', function (container) {
       });
 
       // 3. Despesas fixas do responsável — quinzena configurada
-      (resp.despesasFixas || []).forEach(function (d, i) {
+      var despesasFixasDoMes = (((resp.despesas_fixas_mes || {})[mesKey]) || (resp.despesasFixas || []))
+        .filter(function (d) { return !d.ate || mesKey <= d.ate; });
+      despesasFixasDoMes.forEach(function (d, i) {
         var item = { desc: d.desc, valor: d.valor, locked: false, isFixed: true, fixIdx: i, ckKey: 'f_' + i };
         if (d.quinzena === 1) despQ1.push(item); else despQ2.push(item);
       });
@@ -574,14 +580,20 @@ Router.register('mes-a-mes', function (container) {
           if (!novoDesc || isNaN(novoVal) || novoVal <= 0) { alert('Preencha corretamente.'); return; }
           if (btnSave.dataset.type === 'receita') {
             var gIdx = parseInt(btnSave.dataset.gidx);
-            resp.ganhos[gIdx].desc  = novoDesc;
-            resp.ganhos[gIdx].valor = novoVal;
-            await AppData.updateResponsavel(respId, { ganhos: resp.ganhos });
+            var ganhosMes = JSON.parse(JSON.stringify(((resp.ganhos_mes || {})[mesKey]) || resp.ganhos || []));
+            ganhosMes[gIdx].desc  = novoDesc;
+            ganhosMes[gIdx].valor = novoVal;
+            if (!resp.ganhos_mes) resp.ganhos_mes = {};
+            resp.ganhos_mes[mesKey] = ganhosMes;
+            await AppData.updateResponsavel(respId, { ganhos_mes: resp.ganhos_mes });
           } else if (btnSave.dataset.type === 'fixa') {
             var fixIdx = parseInt(btnSave.dataset.fixidx);
-            resp.despesasFixas[fixIdx].desc  = novoDesc;
-            resp.despesasFixas[fixIdx].valor = novoVal;
-            await AppData.updateResponsavel(respId, { despesasFixas: resp.despesasFixas });
+            var despesasMes = JSON.parse(JSON.stringify(((resp.despesas_fixas_mes || {})[mesKey]) || resp.despesasFixas || []));
+            despesasMes[fixIdx].desc  = novoDesc;
+            despesasMes[fixIdx].valor = novoVal;
+            if (!resp.despesas_fixas_mes) resp.despesas_fixas_mes = {};
+            resp.despesas_fixas_mes[mesKey] = despesasMes;
+            await AppData.updateResponsavel(respId, { despesas_fixas_mes: resp.despesas_fixas_mes });
           } else {
             await AppData.updateDespesaManual(Number(btnSave.dataset.id), { desc: novoDesc, valor: novoVal });
           }
@@ -598,13 +610,15 @@ Router.register('mes-a-mes', function (container) {
 
           if (type === 'receita') {
             var gIdx = parseInt(btnEdit.dataset.gidx);
-            desc  = resp.ganhos[gIdx].desc;
-            valor = resp.ganhos[gIdx].valor;
+            var ganhosMesEdit = ((resp.ganhos_mes || {})[mesKey]) || resp.ganhos || [];
+            desc  = ganhosMesEdit[gIdx].desc;
+            valor = ganhosMesEdit[gIdx].valor;
             saveAttrs = 'data-type="receita" data-gidx="' + gIdx + '"';
           } else if (type === 'fixa') {
             var fixIdx = parseInt(btnEdit.dataset.fixidx);
-            desc  = resp.despesasFixas[fixIdx].desc;
-            valor = resp.despesasFixas[fixIdx].valor;
+            var despMesEdit = ((resp.despesas_fixas_mes || {})[mesKey]) || resp.despesasFixas || [];
+            desc  = despMesEdit[fixIdx].desc;
+            valor = despMesEdit[fixIdx].valor;
             saveAttrs = 'data-type="fixa" data-fixidx="' + fixIdx + '"';
           } else {
             var id   = Number(btnEdit.dataset.id);

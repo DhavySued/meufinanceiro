@@ -156,6 +156,7 @@ Router.register('cad-responsaveis', function (container) {
         '<input class="ganho-desc" type="text" placeholder="Descrição (Ex: Salário)" value="' + (g.desc || '') + '" />' +
         '<input class="ganho-valor" type="number" placeholder="Valor R$" min="0" step="0.01" value="' + (g.valor || '') + '" />' +
         '<input class="ganho-dia" type="number" placeholder="Dia" min="1" max="31" value="' + (g.dia || '') + '" title="Dia do mês que recebe" style="width:70px" />' +
+        '<input class="ganho-ate" type="month" value="' + (g.ate || '') + '" title="Válido até (mês/ano)" style="width:140px;padding:8px;border:1px solid var(--color-border);border-radius:8px;font-size:13px" />' +
         '<button class="ganho-del" data-del="' + i + '" title="Remover">&times;</button>' +
       '</div>';
     }).join('');
@@ -167,6 +168,9 @@ Router.register('cad-responsaveis', function (container) {
     });
     lista.querySelectorAll('.ganho-dia').forEach(function (inp, i) {
       inp.addEventListener('input', function () { ganhosList[i].dia = parseInt(inp.value) || 1; });
+    });
+    lista.querySelectorAll('.ganho-ate').forEach(function (inp, i) {
+      inp.addEventListener('input', function () { ganhosList[i].ate = inp.value || ''; });
     });
     lista.querySelectorAll('[data-del]').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -188,6 +192,7 @@ Router.register('cad-responsaveis', function (container) {
           '<option value="1"' + (d.quinzena === 1 ? ' selected' : '') + '>1ª Quinzena</option>' +
           '<option value="2"' + (d.quinzena !== 1 ? ' selected' : '') + '>2ª Quinzena</option>' +
         '</select>' +
+        '<input class="fixa-ate" type="month" value="' + (d.ate || '') + '" title="Válido até (mês/ano)" style="width:140px;padding:8px;border:1px solid var(--color-border);border-radius:8px;font-size:13px" />' +
         '<button class="ganho-del" data-del-fixa="' + i + '" title="Remover">&times;</button>' +
       '</div>';
     }).join('');
@@ -199,6 +204,9 @@ Router.register('cad-responsaveis', function (container) {
     });
     lista.querySelectorAll('.fixa-qz').forEach(function (sel, i) {
       sel.addEventListener('change', function () { despesasFixas[i].quinzena = parseInt(sel.value); });
+    });
+    lista.querySelectorAll('.fixa-ate').forEach(function (inp, i) {
+      inp.addEventListener('input', function () { despesasFixas[i].ate = inp.value || ''; });
     });
     lista.querySelectorAll('[data-del-fixa]').forEach(function (btn) {
       btn.addEventListener('click', function () {
