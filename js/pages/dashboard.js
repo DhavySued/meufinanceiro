@@ -19,13 +19,20 @@ Router.register('dashboard', function (container) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
+  // Replica a fonte de receitas do mes-a-mes: ganhos_mes[mesKey] ou ganhos, filtrando pelo campo 'ate'
+  function getGanhosDoMes(resp, mesIdx) {
+    var mesKey = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
+    var src = ((resp.ganhos_mes || {})[mesKey]) || (resp.ganhos || []);
+    return src.filter(function (g) { return !g.ate || mesKey <= g.ate; });
+  }
+
   // ── DRE: replica a lógica de cálculo do mes-a-mes.js ──
   function calcDREResp(mesIdx, resp, cat) {
     var mesNum = String(mesIdx + 1).padStart(2, '0');
 
     var respId = resp.id;
 
-    var totalR = (resp.ganhos || []).reduce(function (s, g) { return s + g.valor; }, 0);
+    var totalR = getGanhosDoMes(resp, mesIdx).reduce(function (s, g) { return s + g.valor; }, 0);
     var totalD = 0;
 
     AppData.getCartoesFluxo().forEach(function (c) {
@@ -88,11 +95,11 @@ Router.register('dashboard', function (container) {
     var receita = 0;
     if (respId === 'geral') {
       AppData.getFluxoCaixa().forEach(function (r) {
-        receita += (r.ganhos || []).reduce(function (s, g) { return s + g.valor; }, 0);
+        receita += getGanhosDoMes(r, mesIdx).reduce(function (s, g) { return s + g.valor; }, 0);
       });
     } else {
       var resp = AppData.getById(parseInt(respId));
-      if (resp) receita = (resp.ganhos || []).reduce(function (s, g) { return s + g.valor; }, 0);
+      if (resp) receita = getGanhosDoMes(resp, mesIdx).reduce(function (s, g) { return s + g.valor; }, 0);
     }
 
     // Despesas: apenas lançamentos de cartão
@@ -138,7 +145,7 @@ Router.register('dashboard', function (container) {
     var receita = 0, despesa = 0;
 
     resps.forEach(function (resp) {
-      receita += (resp.ganhos || []).reduce(function (s, g) { return s + g.valor; }, 0);
+      receita += getGanhosDoMes(resp, mesIdx).reduce(function (s, g) { return s + g.valor; }, 0);
 
       (resp.orcamentos || []).forEach(function (m) {
         var gasto = AppData.getLancamentos()
@@ -162,7 +169,7 @@ Router.register('dashboard', function (container) {
       : [AppData.getById(parseInt(respId))].filter(Boolean);
     var items = [];
     resps.forEach(function (resp) {
-      (resp.ganhos || []).forEach(function (g) {
+      getGanhosDoMes(resp, mesIdx).forEach(function (g) {
         items.push({ data: '—', desc: g.desc || g.nome || 'Receita', valor: g.valor, cat: 'Receita Fixa', resp: resp.nome });
       });
     });

@@ -249,6 +249,7 @@ Router.register('cartoes', function (container) {
     var filtroMesIdx = mesListaIdx; // herda o mês selecionado na lista
     var filtrosCab   = { cat: '', resp: '' }; // filtros de cabeçalho
     var sortState    = { col: 'created_at', dir: -1 };  // padrão: último cadastrado no topo
+    var catColapsado = localStorage.getItem('cartoes-cat-colapsado') === '1';
 
     var FUNNEL_SVG_D =
       '<svg class="th-funnel-icon" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">' +
@@ -628,8 +629,13 @@ Router.register('cartoes', function (container) {
             '</div>' +
           '</div>' +
           '<div class="section-box" style="margin:0">' +
-            '<div class="section-box-header"><h2>Gastos por Categoria</h2></div>' +
-            '<div id="cat-box"></div>' +
+            '<div class="section-box-header">' +
+              '<h2>Gastos por Categoria</h2>' +
+              '<button id="btn-toggle-cat" class="btn btn-outline" style="font-size:12px;padding:4px 10px">' +
+                (catColapsado ? 'Mostrar ▼' : 'Ocultar ▲') +
+              '</button>' +
+            '</div>' +
+            '<div id="cat-box"' + (catColapsado ? ' style="display:none"' : '') + '></div>' +
           '</div>' +
         '</div>' +
 
@@ -700,6 +706,12 @@ Router.register('cartoes', function (container) {
       document.getElementById('btn-voltar-cartoes').addEventListener('click', function () {
         container.onclick = null;
         renderLista();
+      });
+      document.getElementById('btn-toggle-cat').addEventListener('click', function () {
+        catColapsado = !catColapsado;
+        localStorage.setItem('cartoes-cat-colapsado', catColapsado ? '1' : '0');
+        document.getElementById('cat-box').style.display = catColapsado ? 'none' : '';
+        this.textContent = catColapsado ? 'Mostrar ▼' : 'Ocultar ▲';
       });
       document.getElementById('btn-novo-lanc-cartao').addEventListener('click', abrirNovo);
       document.getElementById('btn-adiant-cartao').addEventListener('click', abrirAdiantamento);
@@ -952,8 +964,9 @@ Router.register('cartoes', function (container) {
       editandoId = null;
       restaurarFooter();
       document.getElementById('lc-titulo').textContent   = 'Novo Lançamento · ' + c.nome;
-      var mm = String(filtroMesIdx + 1).padStart(2, '0');
-      document.getElementById('lc-data').value           = AppState.ano + '-' + mm + '-01';
+      var hoje = new Date();
+      var hojeISO = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-' + String(hoje.getDate()).padStart(2, '0');
+      document.getElementById('lc-data').value           = hojeISO;
       document.getElementById('lc-resp').value           = '';
       document.getElementById('lc-desc').value           = '';
       document.getElementById('lc-cat').selectedIndex    = 0;
@@ -969,6 +982,7 @@ Router.register('cartoes', function (container) {
       document.querySelectorAll('.lc-split-val').forEach(function (s) { s.textContent = '—'; });
       document.getElementById('lc-split-resumo').textContent = '';
       modal.classList.add('open');
+      setTimeout(function () { document.getElementById('lc-data').focus(); }, 50);
     }
 
     function abrirEditar(l) {
@@ -1234,7 +1248,9 @@ Router.register('cartoes', function (container) {
 
     document.getElementById('btn-fechar-lanc-cartao').addEventListener('click', fecharModal);
     document.getElementById('btn-cancelar-lanc-cartao').addEventListener('click', fecharModal);
-    modal.addEventListener('click', function (e) { if (e.target === modal) fecharModal(); });
+    var _mdOnOverlay = false;
+    modal.addEventListener('mousedown', function (e) { _mdOnOverlay = e.target === modal; });
+    modal.addEventListener('click', function (e) { if (e.target === modal && _mdOnOverlay) fecharModal(); });
     document.getElementById('btn-salvar-lanc-cartao').addEventListener('click', onSalvar);
 
     // ── Modal de Adiantamento ──────────────────────────────────
