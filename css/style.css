@@ -1885,6 +1885,11 @@ button { cursor: pointer; border: none; background: none; }
   box-shadow: 0 12px 32px rgba(0,0,0,0.18);
 }
 
+.credit-card.card-pago {
+  opacity: 0.72;
+  box-shadow: 0 4px 16px rgba(16,185,129,0.18), inset 0 0 0 2px rgba(16,185,129,0.45);
+}
+
 .credit-card::before {
   content: '';
   position: absolute;

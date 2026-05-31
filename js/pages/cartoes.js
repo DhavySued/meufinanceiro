@@ -151,8 +151,9 @@ Router.register('cartoes', function (container) {
 
   // ── Lista principal ──
   function renderLista() {
-    var cartoes = AppData.cartoes;
-    var mesKey  = MESES_KEYS_LISTA[mesListaIdx];
+    var cartoes   = AppData.cartoes;
+    var mesKey    = MESES_KEYS_LISTA[mesListaIdx];
+    var faturaKey = String(AppState.ano) + '-' + String(mesListaIdx + 1).padStart(2, '0');
 
     if (!cartoes.length) {
       container.innerHTML =
@@ -170,10 +171,18 @@ Router.register('cartoes', function (container) {
     var cartoesHTML = cartoes.map(function (c) {
       var usado     = AppData.getTotalCartaoMes(c.id, mesListaIdx);
       var cardStyle = getBancoCardStyle(c.cor, c.nome);
+      var isPago    = !!(c.faturas_pagas && c.faturas_pagas[faturaKey]);
+      var pagoBadge = isPago
+        ? '<div style="position:absolute;top:12px;right:12px;z-index:3;' +
+            'background:rgba(16,185,129,0.92);color:#fff;border-radius:20px;' +
+            'padding:4px 12px;font-size:11px;font-weight:800;letter-spacing:0.5px;' +
+            'box-shadow:0 2px 8px rgba(0,0,0,0.25)">✓ PAGO</div>'
+        : '';
 
-      return '<div class="credit-card" data-id="' + c.id + '" title="Clique para ver os lançamentos"' +
+      return '<div class="credit-card' + (isPago ? ' card-pago' : '') + '" data-id="' + c.id + '" title="Clique para ver os lançamentos"' +
              ' style="cursor:pointer;background:' + cardStyle.gradient + ';color:' + cardStyle.textColor + '">' +
         '<div class="card-gloss"></div>' +
+        pagoBadge +
         '<div class="card-top">' +
           '<div>' + getBancoLogoHTML(c.nome, cardStyle.textColor) + '</div>' +
           '<div>' + getBandeiraHTML(c.bandeira) + '</div>' +
@@ -190,10 +199,18 @@ Router.register('cartoes', function (container) {
     }).join('');
 
     var resumoHTML = cartoes.map(function (c) {
-      var usado = AppData.getTotalCartaoMes(c.id, mesListaIdx);
+      var usado  = AppData.getTotalCartaoMes(c.id, mesListaIdx);
+      var isPago = !!(c.faturas_pagas && c.faturas_pagas[faturaKey]);
+      var statusCell = isPago
+        ? '<span class="badge badge-income" style="margin-right:8px">✓ Fatura Paga</span>' +
+          '<button class="btn-toggle-pago btn btn-outline" data-id="' + c.id + '" data-pago="1"' +
+          ' style="font-size:11px;padding:3px 10px;color:var(--color-muted)">Desfazer</button>'
+        : '<button class="btn-toggle-pago btn btn-outline" data-id="' + c.id + '" data-pago="0"' +
+          ' style="font-size:12px;padding:5px 14px;border-color:#10b981;color:#10b981;font-weight:600">✓ Marcar como Pago</button>';
       return '<tr>' +
         '<td><strong>' + c.nome + '</strong><br><span style="font-size:12px;color:var(--color-muted)">' + c.bandeira + '</span></td>' +
         '<td class="amount-expense">' + fmtR(usado) + '</td>' +
+        '<td style="white-space:nowrap">' + statusCell + '</td>' +
       '</tr>';
     }).join('');
 
@@ -219,7 +236,7 @@ Router.register('cartoes', function (container) {
         '<div class="section-box-header"><h2>Resumo dos Cartões · ' + MESES_NOMES_LISTA[mesListaIdx] + '</h2></div>' +
         '<table class="data-table">' +
           '<thead><tr>' +
-            '<th>Cartão</th><th>Fatura do mês</th>' +
+            '<th>Cartão</th><th>Fatura do mês</th><th>Status</th>' +
           '</tr></thead>' +
           '<tbody>' + resumoHTML + '</tbody>' +
         '</table>' +
@@ -230,6 +247,28 @@ Router.register('cartoes', function (container) {
       AppState.set(mesListaIdx, AppState.ano);
       renderLista();
     });
+
+    // Toggle "Fatura Paga" — container.onclick sobrescreve a cada renderLista()
+    container.onclick = async function (e) {
+      var btn = e.target.closest('.btn-toggle-pago');
+      if (!btn) return;
+      e.stopPropagation();
+      var id     = parseInt(btn.dataset.id);
+      var cartao = AppData.cartoes.find(function (c) { return c.id === id; });
+      if (!cartao) return;
+      var novoStatus = btn.dataset.pago === '0';
+      var faturas = Object.assign({}, cartao.faturas_pagas || {});
+      faturas[faturaKey] = novoStatus;
+      btn.disabled = true;
+      try {
+        await AppData.updateCartao(id, { faturas_pagas: faturas });
+        renderLista();
+      } catch (err) {
+        console.error('[toggle-pago] erro:', err);
+        alert('Erro ao salvar: ' + (err.message || JSON.stringify(err)));
+        btn.disabled = false;
+      }
+    };
 
     // Clique no cartão → abre detalhe (já com o mês selecionado)
     document.getElementById('cards-grid').addEventListener('click', function (e) {
