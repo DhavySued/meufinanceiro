@@ -252,7 +252,7 @@ Router.register('mes-a-mes', function (container) {
 
       // 3. Despesas fixas do responsável — quinzena configurada
       var despesasFixasDoMes = (((resp.despesas_fixas_mes || {})[mesKey]) || (resp.despesasFixas || []))
-        .filter(function (d) { return !d.ate || mesKey <= d.ate; });
+        .filter(function (d) { return (!d.de || mesKey >= d.de) && (!d.ate || mesKey <= d.ate); });
       despesasFixasDoMes.forEach(function (d, i) {
         var item = { desc: d.desc, valor: d.valor, locked: false, isFixed: true, fixIdx: i, ckKey: 'f_' + i };
         if (d.quinzena === 1) despQ1.push(item); else despQ2.push(item);

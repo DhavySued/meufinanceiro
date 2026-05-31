@@ -197,7 +197,7 @@ Router.register('cad-responsaveis', function (container) {
     lista.className = 'ganhos-table';
     var header = despesasFixas.length
       ? '<div class="ganhos-table-header ganho-row-fixas">' +
-          '<span>Descrição</span><span>Valor R$</span><span>Quinzena</span><span>Válido até</span><span></span>' +
+          '<span>Descrição</span><span>Valor R$</span><span>Quinzena</span><span>De</span><span>Válido até</span><span></span>' +
         '</div>'
       : '';
     lista.innerHTML = header + despesasFixas.map(function (d, i) {
@@ -208,6 +208,7 @@ Router.register('cad-responsaveis', function (container) {
           '<option value="1"' + (d.quinzena === 1 ? ' selected' : '') + '>1ª Quinzena</option>' +
           '<option value="2"' + (d.quinzena !== 1 ? ' selected' : '') + '>2ª Quinzena</option>' +
         '</select>' +
+        '<input class="fixa-de" type="month" value="' + (d.de || '') + '" />' +
         '<input class="fixa-ate" type="month" value="' + (d.ate || '') + '" />' +
         '<button class="ganho-del" data-del-fixa="' + i + '" title="Remover">&times;</button>' +
       '</div>';
@@ -220,6 +221,9 @@ Router.register('cad-responsaveis', function (container) {
     });
     lista.querySelectorAll('.fixa-qz').forEach(function (sel, i) {
       sel.addEventListener('change', function () { despesasFixas[i].quinzena = parseInt(sel.value); });
+    });
+    lista.querySelectorAll('.fixa-de').forEach(function (inp, i) {
+      inp.addEventListener('input', function () { despesasFixas[i].de = inp.value || ''; });
     });
     lista.querySelectorAll('.fixa-ate').forEach(function (inp, i) {
       inp.addEventListener('input', function () { despesasFixas[i].ate = inp.value || ''; });
@@ -276,7 +280,7 @@ Router.register('cad-responsaveis', function (container) {
     renderGanhos();
   });
   document.getElementById('btn-add-fixa').addEventListener('click', function () {
-    despesasFixas.push({ desc: '', valor: 0, quinzena: 2 });
+    despesasFixas.push({ desc: '', valor: 0, quinzena: 2, de: '', ate: '' });
     renderFixas();
   });
   document.getElementById('btn-add-orc').addEventListener('click', function () {

@@ -25,6 +25,12 @@ Router.register('dashboard', function (container) {
     return src.filter(function (g) { return (!g.de || mesKey >= g.de) && (!g.ate || mesKey <= g.ate); });
   }
 
+  function getFixasDoMes(resp, mesIdx) {
+    var mesKey = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
+    var src = (((resp.despesas_fixas_mes || {})[mesKey]) || (resp.despesasFixas || []));
+    return src.filter(function (d) { return (!d.de || mesKey >= d.de) && (!d.ate || mesKey <= d.ate); });
+  }
+
   // ── DRE: replica a lógica de cálculo do mes-a-mes.js ──
   function calcDREResp(mesIdx, resp, cat) {
     var mesNum = String(mesIdx + 1).padStart(2, '0');
@@ -62,7 +68,7 @@ Router.register('dashboard', function (container) {
       totalD += Math.max(0, m.limite - gasto);
     });
 
-    (resp.despesasFixas || []).forEach(function (d) { totalD += d.valor; });
+    getFixasDoMes(resp, mesIdx).forEach(function (d) { totalD += d.valor; });
 
     AppData.getDespesasManuais(mesIdx, respId).forEach(function (d) { totalD += d.valor; });
 
@@ -153,7 +159,7 @@ Router.register('dashboard', function (container) {
         despesa += Math.max(0, m.limite - gasto);
       });
 
-      (resp.despesasFixas || []).forEach(function (d) { despesa += d.valor; });
+      getFixasDoMes(resp, mesIdx).forEach(function (d) { despesa += d.valor; });
 
       AppData.getDespesasManuais(mesIdx, resp.id).forEach(function (d) { despesa += d.valor; });
     });
@@ -220,7 +226,7 @@ Router.register('dashboard', function (container) {
     });
 
     resps.forEach(function (resp) {
-      (resp.despesasFixas || []).forEach(function (d) {
+      getFixasDoMes(resp, mesIdx).forEach(function (d) {
         items.push({ data: '—', desc: d.desc || d.nome || 'Despesa Fixa', valor: d.valor, cat: 'Despesa Fixa', resp: resp.nome });
       });
     });
@@ -258,7 +264,7 @@ Router.register('dashboard', function (container) {
         if (reserva > 0) items.push({ data: '—', desc: 'Reserva: ' + m.catNome, valor: reserva, cat: 'Orçamento', resp: resp.nome });
       });
 
-      (resp.despesasFixas || []).forEach(function (d) {
+      getFixasDoMes(resp, mesIdx).forEach(function (d) {
         items.push({ data: '—', desc: d.desc || d.nome || 'Despesa Fixa', valor: d.valor, cat: 'Despesa Fixa', resp: resp.nome });
       });
 
