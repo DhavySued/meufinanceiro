@@ -41,11 +41,10 @@ Router.register('mes-a-mes', function (container) {
         }
         return s + (l.tipo === 'receita' ? -v : v);
       }, 0);
-      // total positivo = dívida líquida; negativo = crédito líquido
       var concilCount = lancs.filter(function (l) { return l.conciliado; }).length;
       return {
         desc:    'Cartão ' + c.nome,
-        valor:   Math.max(0, total), // dívida líquida positiva para a DRE
+        valor:   Math.max(0, total),
         quinzena: 2,
         locked:  true,
         cor:     c.cor || null,
@@ -57,39 +56,63 @@ Router.register('mes-a-mes', function (container) {
     });
   }
 
-  // ── Modal de adicionar gasto ──
-  function criarModalGasto() {
-    var ant = document.getElementById('modal-add-gasto');
+  // ── Modal de adicionar item (Conta a Receber ou Conta a Pagar) ──
+  function criarModalItem() {
+    var ant = document.getElementById('modal-add-item');
     if (ant) ant.remove();
     var m = document.createElement('div');
     m.className = 'modal-overlay';
-    m.id = 'modal-add-gasto';
+    m.id = 'modal-add-item';
     m.innerHTML =
       '<div class="modal">' +
         '<div class="modal-header">' +
-          '<h3>Adicionar Gasto</h3>' +
-          '<button class="modal-close" id="btn-fechar-gasto">&times;</button>' +
+          '<h3 id="modal-item-titulo">Adicionar</h3>' +
+          '<button class="modal-close" id="btn-fechar-item">&times;</button>' +
         '</div>' +
         '<div class="modal-body">' +
           '<div class="form-group">' +
             '<label>Descrição</label>' +
-            '<input type="text" id="gasto-desc" placeholder="Ex: Conta de Luz" />' +
+            '<input type="text" id="item-desc" placeholder="Ex: Salário" />' +
           '</div>' +
           '<div class="form-group">' +
             '<label>Valor (R$)</label>' +
-            '<input type="number" id="gasto-valor" placeholder="0,00" min="0" step="0.01" />' +
+            '<input type="number" id="item-valor" placeholder="0,00" min="0" step="0.01" />' +
           '</div>' +
           '<div class="form-group">' +
             '<label>Quinzena</label>' +
-            '<select id="gasto-qz">' +
+            '<select id="item-qz">' +
               '<option value="1">1ª Quinzena (dias 01–15)</option>' +
               '<option value="2">2ª Quinzena (dias 16–31)</option>' +
             '</select>' +
           '</div>' +
         '</div>' +
         '<div class="modal-footer">' +
-          '<button class="btn btn-outline" id="btn-cancelar-gasto">Cancelar</button>' +
-          '<button class="btn btn-primary" id="btn-salvar-gasto">Adicionar</button>' +
+          '<button class="btn btn-outline" id="btn-cancelar-item">Cancelar</button>' +
+          '<button class="btn btn-primary" id="btn-salvar-item">Adicionar</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(m);
+    return m;
+  }
+
+  // ── Modal de replicar para próximo mês ──
+  function criarModalReplicar() {
+    var ant = document.getElementById('modal-replicar');
+    if (ant) ant.remove();
+    var m = document.createElement('div');
+    m.className = 'modal-overlay';
+    m.id = 'modal-replicar';
+    m.innerHTML =
+      '<div class="modal modal-wide">' +
+        '<div class="modal-header">' +
+          '<h3 id="replicar-titulo">Replicar para Próximo Mês</h3>' +
+          '<button class="modal-close" id="btn-fechar-replicar">&times;</button>' +
+        '</div>' +
+        '<div class="modal-body" id="replicar-body" style="max-height:60vh;overflow-y:auto">' +
+        '</div>' +
+        '<div class="modal-footer">' +
+          '<button class="btn btn-outline" id="btn-cancelar-replicar">Cancelar</button>' +
+          '<button class="btn btn-primary" id="btn-confirmar-replicar">Replicar Selecionados</button>' +
         '</div>' +
       '</div>';
     document.body.appendChild(m);
@@ -156,55 +179,178 @@ Router.register('mes-a-mes', function (container) {
     var mesNome = MESES_NOMES[mesIdx] + ' 2026';
     var respId  = resp.id;
     var mesKey  = '2026-' + String(mesIdx + 1).padStart(2, '0');
+    var isNovoModelo = mesKey >= '2026-07';
 
     function getReceitasQz() {
-      var src = ((resp.ganhos_mes || {})[mesKey]) || (resp.ganhos || []);
-      var ganhos = src
-        .filter(function (g) { return (!g.de || mesKey >= g.de) && (!g.ate || mesKey <= g.ate); })
-        .map(function (g, i) {
-          return { desc: g.desc, valor: g.valor, dia: g.dia || 1, isReceita: true, gIdx: i, ckKey: 'r_' + i };
-        });
+      var src = isNovoModelo
+        ? ((resp.ganhos_mes || {})[mesKey] || [])
+        : (((resp.ganhos_mes || {})[mesKey]) || (resp.ganhos || []));
+      var ganhos = (isNovoModelo
+        ? src
+        : src.filter(function (g) { return (!g.de || mesKey >= g.de) && (!g.ate || mesKey <= g.ate); })
+      ).map(function (g, i) {
+        return { desc: g.desc, valor: g.valor, dia: g.dia || 1, isReceita: true, gIdx: i, ckKey: 'r_' + i };
+      });
       return {
         q1: ganhos.filter(function (g) { return g.dia <= 15; }),
         q2: ganhos.filter(function (g) { return g.dia > 15; })
       };
     }
 
-    var modalGasto   = criarModalGasto();
-    var qzPendente   = 1;
+    var modalItem     = criarModalItem();
+    var modalReplicar = (isNovoModelo && mesIdx < 11) ? criarModalReplicar() : null;
+    var itemTipo      = 'despesa';
+    var qzPendente    = 1;
 
     // ── Check de conclusão por linha (Supabase) ──
     function isChecked(ckKey) { return AppData.isDreChecked(respId, mesIdx, ckKey); }
     async function toggleCheck(ckKey) { return await AppData.toggleDreCheck(respId, mesIdx, ckKey); }
 
-    function abrirModalGasto(qz) {
+    function abrirModalItem(tipo, qz) {
+      itemTipo = tipo;
       qzPendente = qz;
-      document.getElementById('gasto-desc').value  = '';
-      document.getElementById('gasto-valor').value = '';
-      document.getElementById('gasto-qz').value    = String(qz);
-      modalGasto.classList.add('open');
+      document.getElementById('modal-item-titulo').textContent =
+        tipo === 'receita' ? 'Adicionar Conta a Receber' : 'Adicionar Conta a Pagar';
+      document.getElementById('item-desc').value  = '';
+      document.getElementById('item-valor').value = '';
+      document.getElementById('item-qz').value    = String(qz);
+      modalItem.classList.add('open');
     }
 
-    function fecharModalGasto() { modalGasto.classList.remove('open'); }
+    function fecharModalItem() { modalItem.classList.remove('open'); }
 
-    document.getElementById('btn-fechar-gasto').addEventListener('click', fecharModalGasto);
-    document.getElementById('btn-cancelar-gasto').addEventListener('click', fecharModalGasto);
-    modalGasto.addEventListener('click', function (e) { if (e.target === modalGasto) fecharModalGasto(); });
+    document.getElementById('btn-fechar-item').addEventListener('click', fecharModalItem);
+    document.getElementById('btn-cancelar-item').addEventListener('click', fecharModalItem);
+    modalItem.addEventListener('click', function (e) { if (e.target === modalItem) fecharModalItem(); });
 
-    document.getElementById('btn-salvar-gasto').addEventListener('click', async function () {
-      var desc  = document.getElementById('gasto-desc').value.trim();
-      var valor = parseFloat(document.getElementById('gasto-valor').value);
-      var qz    = parseInt(document.getElementById('gasto-qz').value);
+    document.getElementById('btn-salvar-item').addEventListener('click', async function () {
+      var desc  = document.getElementById('item-desc').value.trim();
+      var valor = parseFloat(document.getElementById('item-valor').value);
+      var qz    = parseInt(document.getElementById('item-qz').value);
       if (!desc || isNaN(valor) || valor <= 0) { alert('Preencha a descrição e o valor.'); return; }
       try {
-        await AppData.addDespesaManual({ mesIdx: mesIdx, respId: respId, quinzena: qz, desc: desc, valor: valor });
-        fecharModalGasto();
+        if (itemTipo === 'receita') {
+          var ganhosM = JSON.parse(JSON.stringify((resp.ganhos_mes || {})[mesKey] || []));
+          ganhosM.push({ desc: desc, valor: valor, dia: qz === 1 ? 5 : 20 });
+          if (!resp.ganhos_mes) resp.ganhos_mes = {};
+          resp.ganhos_mes[mesKey] = ganhosM;
+          await AppData.updateResponsavel(respId, { ganhos_mes: resp.ganhos_mes });
+        } else if (isNovoModelo) {
+          var fixasM = JSON.parse(JSON.stringify((resp.despesas_fixas_mes || {})[mesKey] || []));
+          fixasM.push({ desc: desc, valor: valor, quinzena: qz });
+          if (!resp.despesas_fixas_mes) resp.despesas_fixas_mes = {};
+          resp.despesas_fixas_mes[mesKey] = fixasM;
+          await AppData.updateResponsavel(respId, { despesas_fixas_mes: resp.despesas_fixas_mes });
+        } else {
+          await AppData.addDespesaManual({ mesIdx: mesIdx, respId: respId, quinzena: qz, desc: desc, valor: valor });
+        }
+        fecharModalItem();
         render();
       } catch (err) {
-        console.error('[addDespesaManual] erro:', err);
+        console.error('[addItem] erro:', err);
         alert('Erro ao salvar: ' + (err.message || JSON.stringify(err)));
       }
     });
+
+    // ── Modal de replicar ──
+    if (modalReplicar) {
+      var nextMesIdx = mesIdx + 1;
+      var nextMesKey = '2026-' + String(nextMesIdx + 1).padStart(2, '0');
+      var nextMesNome = MESES_NOMES[nextMesIdx];
+
+      document.getElementById('replicar-titulo').textContent =
+        'Replicar para ' + nextMesNome;
+
+      function abrirModalReplicar() {
+        var recAtual = (resp.ganhos_mes || {})[mesKey] || [];
+        var fixAtual = (resp.despesas_fixas_mes || {})[mesKey] || [];
+        var html = '';
+
+        if (recAtual.length) {
+          html += '<div class="form-section-subtitle" style="margin:4px 0 10px">Contas a Receber</div>';
+          recAtual.forEach(function (g, i) {
+            html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--color-border);cursor:pointer">' +
+              '<input type="checkbox" class="rep-rec" data-idx="' + i + '" checked style="width:16px;height:16px;accent-color:var(--color-primary);flex-shrink:0" />' +
+              '<span style="flex:1;font-size:13px">' + (g.desc || '—') + '</span>' +
+              '<span style="color:var(--color-income);font-weight:600;font-size:13px">' + fmtR(g.valor) + '</span>' +
+            '</label>';
+          });
+        }
+
+        if (fixAtual.length) {
+          html += '<div class="form-section-subtitle" style="margin:' + (recAtual.length ? '18px' : '4px') + ' 0 10px">Contas a Pagar</div>';
+          fixAtual.forEach(function (d, i) {
+            html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--color-border);cursor:pointer">' +
+              '<input type="checkbox" class="rep-fix" data-idx="' + i + '" checked style="width:16px;height:16px;accent-color:var(--color-primary);flex-shrink:0" />' +
+              '<span style="flex:1;font-size:13px">' + (d.desc || '—') + '</span>' +
+              '<span style="color:var(--color-expense);font-weight:600;font-size:13px">' + fmtR(d.valor) + '</span>' +
+            '</label>';
+          });
+        }
+
+        if (!recAtual.length && !fixAtual.length) {
+          html = '<p style="color:var(--color-muted);font-size:13px;text-align:center;padding:24px 0">Nenhum item para replicar neste mês.</p>';
+        }
+
+        document.getElementById('replicar-body').innerHTML = html;
+        modalReplicar.classList.add('open');
+      }
+
+      function fecharModalReplicar() { modalReplicar.classList.remove('open'); }
+
+      document.getElementById('btn-fechar-replicar').addEventListener('click', fecharModalReplicar);
+      document.getElementById('btn-cancelar-replicar').addEventListener('click', fecharModalReplicar);
+      modalReplicar.addEventListener('click', function (e) { if (e.target === modalReplicar) fecharModalReplicar(); });
+
+      document.getElementById('btn-confirmar-replicar').addEventListener('click', async function () {
+        var recAtual = (resp.ganhos_mes || {})[mesKey] || [];
+        var fixAtual = (resp.despesas_fixas_mes || {})[mesKey] || [];
+
+        var recSel = [];
+        document.querySelectorAll('#replicar-body .rep-rec:checked').forEach(function (cb) {
+          var g = recAtual[parseInt(cb.dataset.idx)];
+          if (g) recSel.push(Object.assign({}, g));
+        });
+
+        var fixSel = [];
+        document.querySelectorAll('#replicar-body .rep-fix:checked').forEach(function (cb) {
+          var d = fixAtual[parseInt(cb.dataset.idx)];
+          if (d) fixSel.push(Object.assign({}, d));
+        });
+
+        if (!recSel.length && !fixSel.length) {
+          alert('Selecione ao menos um item para replicar.');
+          return;
+        }
+
+        try {
+          if (!resp.ganhos_mes) resp.ganhos_mes = {};
+          if (!resp.despesas_fixas_mes) resp.despesas_fixas_mes = {};
+
+          var nextGanhos = JSON.parse(JSON.stringify(resp.ganhos_mes[nextMesKey] || []));
+          recSel.forEach(function (g) {
+            if (!nextGanhos.some(function (x) { return x.desc === g.desc; })) nextGanhos.push(g);
+          });
+          resp.ganhos_mes[nextMesKey] = nextGanhos;
+
+          var nextFixas = JSON.parse(JSON.stringify(resp.despesas_fixas_mes[nextMesKey] || []));
+          fixSel.forEach(function (d) {
+            if (!nextFixas.some(function (x) { return x.desc === d.desc; })) nextFixas.push(d);
+          });
+          resp.despesas_fixas_mes[nextMesKey] = nextFixas;
+
+          await AppData.updateResponsavel(respId, {
+            ganhos_mes: resp.ganhos_mes,
+            despesas_fixas_mes: resp.despesas_fixas_mes
+          });
+          fecharModalReplicar();
+          alert('Itens replicados para ' + nextMesNome + ' com sucesso!');
+        } catch (err) {
+          console.error('[replicar] erro:', err);
+          alert('Erro ao replicar: ' + (err.message || JSON.stringify(err)));
+        }
+      });
+    }
 
     // Gasto real de uma categoria no mês (inclui lançamentos divididos)
     function gastoCategoriaMes(catNome) {
@@ -225,7 +371,6 @@ Router.register('mes-a-mes', function (container) {
           }
           return s + (l.tipo === 'receita' ? -v : v);
         }, 0);
-      // net positivo = gasto líquido; retorna como positivo para comparação com orçamento
       return Math.max(0, net);
     }
 
@@ -243,22 +388,25 @@ Router.register('mes-a-mes', function (container) {
         var excesso  = excedeu ? gasto - m.limite : 0;
         despQ2.push({
           desc: m.catNome,
-          valor: excedeu ? 0 : restante,   // excedeu → não conta no total (exibição usa x.excesso); senão → saldo restante
+          valor: excedeu ? 0 : restante,
           gasto: gasto,
           locked: true, isMeta: true, limite: m.limite, restante: restante, excedeu: excedeu, excesso: excesso,
           ckKey: 'o_' + m.catNome,
         });
       });
 
-      // 3. Despesas fixas do responsável — quinzena configurada
-      var despesasFixasDoMes = (((resp.despesas_fixas_mes || {})[mesKey]) || (resp.despesasFixas || []))
-        .filter(function (d) { return (!d.de || mesKey >= d.de) && (!d.ate || mesKey <= d.ate); });
+      // 3. Contas a Pagar (fixas)
+      var despesasFixasDoMes = isNovoModelo
+        ? ((resp.despesas_fixas_mes || {})[mesKey] || [])
+        : (((resp.despesas_fixas_mes || {})[mesKey]) || (resp.despesasFixas || []))
+            .filter(function (d) { return (!d.de || mesKey >= d.de) && (!d.ate || mesKey <= d.ate); });
+
       despesasFixasDoMes.forEach(function (d, i) {
         var item = { desc: d.desc, valor: d.valor, locked: false, isFixed: true, fixIdx: i, ckKey: 'f_' + i };
         if (d.quinzena === 1) despQ1.push(item); else despQ2.push(item);
       });
 
-      // 4. Gastos manuais adicionados na DRE
+      // 4. Gastos manuais
       AppData.getDespesasManuais(mesIdx, respId).forEach(function (d) {
         var item = { desc: d.desc, valor: d.valor, locked: false, id: d.id, ckKey: 'm_' + d.id };
         if (d.quinzena === 1) despQ1.push(item); else despQ2.push(item);
@@ -327,7 +475,7 @@ Router.register('mes-a-mes', function (container) {
             '<td class="dre-td">' +
               ckBox(ck) +
               '<span' + doneDescStyle(ck) + '>' +
-                '<i class="ph ph-push-pin" style="margin-right:4px;font-size:11px;color:var(--color-muted)" title="Despesa fixa"></i>' + x.desc +
+                '<i class="ph ph-push-pin" style="margin-right:4px;font-size:11px;color:var(--color-muted)" title="Conta a Pagar"></i>' + x.desc +
               '</span>' +
             '</td>' +
             '<td class="dre-td-val">' +
@@ -431,6 +579,12 @@ Router.register('mes-a-mes', function (container) {
       var badgeClass = saldoPositivo ? 'dre-badge-pos' : 'dre-badge-neg';
       var resultClass = saldoPositivo ? 'dre-resultado-pos' : 'dre-resultado-neg';
 
+      var recAddBtn = isNovoModelo
+        ? '<tr><td colspan="2" style="padding:8px 16px">' +
+            '<button class="btn-add-rec dre-btn-add" data-qz="' + qzNum + '">+ Adicionar Conta a Receber</button>' +
+          '</td></tr>'
+        : '';
+
       return '<div class="dre-qz-card">' +
         '<div class="dre-qz-hdr">' +
           '<div>' +
@@ -444,22 +598,23 @@ Router.register('mes-a-mes', function (container) {
 
         '<div class="dre-section-hdr dre-income-hdr">' +
           '<span class="dre-section-icon dre-section-icon-income"><i class="ph ph-trend-up"></i></span>' +
-          '<span class="dre-section-label">Receitas</span>' +
+          '<span class="dre-section-label">Contas a Receber</span>' +
           '<span class="dre-section-total dre-val-income">' + fmtR(totalR) + '</span>' +
         '</div>' +
         '<table class="dre-table"><tbody>' +
           itemRows(receitasArr, 'dre-val-income') +
+          recAddBtn +
         '</tbody></table>' +
 
         '<div class="dre-section-hdr dre-expense-hdr">' +
           '<span class="dre-section-icon dre-section-icon-expense"><i class="ph ph-trend-down"></i></span>' +
-          '<span class="dre-section-label">Despesas</span>' +
+          '<span class="dre-section-label">Contas a Pagar</span>' +
           '<span class="dre-section-total dre-val-expense">' + fmtR(totalD) + '</span>' +
         '</div>' +
         '<table class="dre-table"><tbody>' +
           itemRows(despArr, 'dre-val-expense') +
           '<tr><td colspan="2" style="padding:8px 16px">' +
-            '<button class="btn-add-desp dre-btn-add" data-qz="' + qzNum + '">+ Adicionar Gasto</button>' +
+            '<button class="btn-add-desp dre-btn-add" data-qz="' + qzNum + '">+ Adicionar Conta a Pagar</button>' +
           '</td></tr>' +
         '</tbody></table>' +
 
@@ -479,9 +634,16 @@ Router.register('mes-a-mes', function (container) {
       var totalR2 = soma(receitasQ2), totalD2 = soma(despQ2), saldo2 = totalR2 - totalD2;
       var totalR  = totalR1 + totalR2, totalD = totalD1 + totalD2, saldoTotal = totalR - totalD;
 
+      var replicarBtn = (isNovoModelo && mesIdx < 11)
+        ? '<button class="btn btn-outline" id="btn-abrir-replicar" style="font-size:13px;gap:6px">' +
+            '<i class="ph ph-copy" style="margin-right:4px"></i>Replicar para ' + MESES_NOMES[mesIdx + 1] +
+          '</button>'
+        : '';
+
       var el = document.getElementById('dre-content');
 
       el.innerHTML =
+        (replicarBtn ? '<div style="display:flex;justify-content:flex-end;margin-bottom:12px">' + replicarBtn + '</div>' : '') +
         '<div style="display:grid;grid-template-columns:1fr 1fr 280px;gap:20px;margin-bottom:24px;align-items:start" class="quinzena-grid">' +
           buildQzTable('1', '01 a 15', 1, receitasQ1, despQ1, totalR1, totalD1, saldo1) +
           buildQzTable('2', '16 a 31', 2, receitasQ2, despQ2, totalR2, totalD2, saldo2) +
@@ -494,13 +656,13 @@ Router.register('mes-a-mes', function (container) {
             '<thead><tr><th></th><th>1ª Quinzena</th><th>2ª Quinzena</th><th>Total do Mês</th></tr></thead>' +
             '<tbody>' +
               '<tr>' +
-                '<td style="font-weight:600"><span style="color:#10b981;margin-right:6px">↑</span>Receitas</td>' +
+                '<td style="font-weight:600"><span style="color:#10b981;margin-right:6px">↑</span>Contas a Receber</td>' +
                 '<td class="amount-income">' + fmtR(totalR1) + '</td>' +
                 '<td class="amount-income">' + fmtR(totalR2) + '</td>' +
                 '<td><strong class="amount-income">' + fmtR(totalR) + '</strong></td>' +
               '</tr>' +
               '<tr>' +
-                '<td style="font-weight:600"><span style="color:#ef4444;margin-right:6px">↓</span>Despesas</td>' +
+                '<td style="font-weight:600"><span style="color:#ef4444;margin-right:6px">↓</span>Contas a Pagar</td>' +
                 '<td class="amount-expense">' + fmtR(totalD1) + '</td>' +
                 '<td class="amount-expense">' + fmtR(totalD2) + '</td>' +
                 '<td><strong class="amount-expense">' + fmtR(totalD) + '</strong></td>' +
@@ -515,17 +677,21 @@ Router.register('mes-a-mes', function (container) {
           '</table>' +
         '</div>';
 
+      if (replicarBtn) {
+        document.getElementById('btn-abrir-replicar').addEventListener('click', abrirModalReplicar);
+      }
+
       // Delegação de checkboxes de conclusão por linha
       el.onchange = async function (e) {
         var cb = e.target.closest('.dre-row-check');
         if (!cb) return;
-        var anteriorChecked = !cb.checked; // estado antes do clique
+        var anteriorChecked = !cb.checked;
         cb.disabled = true;
         try {
           await toggleCheck(cb.dataset.ck);
         } catch (err) {
           console.error('[dre-check] erro ao salvar:', err);
-          cb.checked = anteriorChecked; // reverte visualmente
+          cb.checked = anteriorChecked;
           cb.disabled = false;
           alert('Erro ao salvar marcação: ' + (err.message || JSON.stringify(err)));
           return;
@@ -535,7 +701,6 @@ Router.register('mes-a-mes', function (container) {
         if (!tr) return;
         var done = isChecked(cb.dataset.ck);
         tr.style.opacity = done ? '0.45' : '';
-        // aplica/remove line-through no span de descrição
         tr.querySelectorAll('td.dre-td > span').forEach(function (s) {
           if (s.classList.contains('dre-row-check')) return;
           s.style.textDecoration = done ? 'line-through' : '';
@@ -548,7 +713,8 @@ Router.register('mes-a-mes', function (container) {
       // Delegação de cliques no conteúdo da DRE
       el.onclick = async function (e) {
         var btnDel  = e.target.closest('.btn-del-row');
-        var btnAdd  = e.target.closest('.btn-add-desp');
+        var btnAddDesp = e.target.closest('.btn-add-desp');
+        var btnAddRec  = e.target.closest('.btn-add-rec');
         var btnEdit = e.target.closest('.btn-edit-row');
         var btnSave = e.target.closest('.btn-ei-save');
         var btnCanc = e.target.closest('.btn-ei-cancel');
@@ -556,12 +722,28 @@ Router.register('mes-a-mes', function (container) {
         if (btnDel) {
           if (btnDel.dataset.type === 'receita') {
             var gIdx = parseInt(btnDel.dataset.gidx);
-            resp.ganhos.splice(gIdx, 1);
-            await AppData.updateResponsavel(respId, { ganhos: resp.ganhos });
+            if (isNovoModelo) {
+              var ganhosM = JSON.parse(JSON.stringify((resp.ganhos_mes || {})[mesKey] || []));
+              ganhosM.splice(gIdx, 1);
+              if (!resp.ganhos_mes) resp.ganhos_mes = {};
+              resp.ganhos_mes[mesKey] = ganhosM;
+              await AppData.updateResponsavel(respId, { ganhos_mes: resp.ganhos_mes });
+            } else {
+              resp.ganhos.splice(gIdx, 1);
+              await AppData.updateResponsavel(respId, { ganhos: resp.ganhos });
+            }
           } else if (btnDel.dataset.type === 'fixa') {
             var fixIdx = parseInt(btnDel.dataset.fixidx);
-            resp.despesasFixas.splice(fixIdx, 1);
-            await AppData.updateResponsavel(respId, { despesasFixas: resp.despesasFixas });
+            if (isNovoModelo) {
+              var fixasM = JSON.parse(JSON.stringify((resp.despesas_fixas_mes || {})[mesKey] || []));
+              fixasM.splice(fixIdx, 1);
+              if (!resp.despesas_fixas_mes) resp.despesas_fixas_mes = {};
+              resp.despesas_fixas_mes[mesKey] = fixasM;
+              await AppData.updateResponsavel(respId, { despesas_fixas_mes: resp.despesas_fixas_mes });
+            } else {
+              resp.despesasFixas.splice(fixIdx, 1);
+              await AppData.updateResponsavel(respId, { despesasFixas: resp.despesasFixas });
+            }
           } else {
             await AppData.removeDespesaManual(Number(btnDel.dataset.id));
           }
@@ -569,8 +751,13 @@ Router.register('mes-a-mes', function (container) {
           return;
         }
 
-        if (btnAdd) {
-          abrirModalGasto(parseInt(btnAdd.dataset.qz));
+        if (btnAddDesp) {
+          abrirModalItem('despesa', parseInt(btnAddDesp.dataset.qz));
+          return;
+        }
+
+        if (btnAddRec) {
+          abrirModalItem('receita', parseInt(btnAddRec.dataset.qz));
           return;
         }
 
@@ -580,7 +767,7 @@ Router.register('mes-a-mes', function (container) {
           if (!novoDesc || isNaN(novoVal) || novoVal <= 0) { alert('Preencha corretamente.'); return; }
           if (btnSave.dataset.type === 'receita') {
             var gIdx = parseInt(btnSave.dataset.gidx);
-            var ganhosMes = JSON.parse(JSON.stringify(((resp.ganhos_mes || {})[mesKey]) || resp.ganhos || []));
+            var ganhosMes = JSON.parse(JSON.stringify(((resp.ganhos_mes || {})[mesKey]) || (isNovoModelo ? [] : (resp.ganhos || []))));
             ganhosMes[gIdx].desc  = novoDesc;
             ganhosMes[gIdx].valor = novoVal;
             if (!resp.ganhos_mes) resp.ganhos_mes = {};
@@ -588,7 +775,7 @@ Router.register('mes-a-mes', function (container) {
             await AppData.updateResponsavel(respId, { ganhos_mes: resp.ganhos_mes });
           } else if (btnSave.dataset.type === 'fixa') {
             var fixIdx = parseInt(btnSave.dataset.fixidx);
-            var despesasMes = JSON.parse(JSON.stringify(((resp.despesas_fixas_mes || {})[mesKey]) || resp.despesasFixas || []));
+            var despesasMes = JSON.parse(JSON.stringify(((resp.despesas_fixas_mes || {})[mesKey]) || (isNovoModelo ? [] : (resp.despesasFixas || []))));
             despesasMes[fixIdx].desc  = novoDesc;
             despesasMes[fixIdx].valor = novoVal;
             if (!resp.despesas_fixas_mes) resp.despesas_fixas_mes = {};
@@ -610,13 +797,13 @@ Router.register('mes-a-mes', function (container) {
 
           if (type === 'receita') {
             var gIdx = parseInt(btnEdit.dataset.gidx);
-            var ganhosMesEdit = ((resp.ganhos_mes || {})[mesKey]) || resp.ganhos || [];
+            var ganhosMesEdit = ((resp.ganhos_mes || {})[mesKey]) || (isNovoModelo ? [] : (resp.ganhos || []));
             desc  = ganhosMesEdit[gIdx].desc;
             valor = ganhosMesEdit[gIdx].valor;
             saveAttrs = 'data-type="receita" data-gidx="' + gIdx + '"';
           } else if (type === 'fixa') {
             var fixIdx = parseInt(btnEdit.dataset.fixidx);
-            var despMesEdit = ((resp.despesas_fixas_mes || {})[mesKey]) || resp.despesasFixas || [];
+            var despMesEdit = ((resp.despesas_fixas_mes || {})[mesKey]) || (isNovoModelo ? [] : (resp.despesasFixas || []));
             desc  = despMesEdit[fixIdx].desc;
             valor = despMesEdit[fixIdx].valor;
             saveAttrs = 'data-type="fixa" data-fixidx="' + fixIdx + '"';

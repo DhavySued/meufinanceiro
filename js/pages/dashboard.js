@@ -21,14 +21,20 @@ Router.register('dashboard', function (container) {
 
   function getGanhosDoMes(resp, mesIdx) {
     var mesKey = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
-    var src = ((resp.ganhos_mes || {})[mesKey]) || (resp.ganhos || []);
-    return src.filter(function (g) { return (!g.de || mesKey >= g.de) && (!g.ate || mesKey <= g.ate); });
+    var isNovo = mesKey >= '2026-07';
+    var src = isNovo
+      ? ((resp.ganhos_mes || {})[mesKey] || [])
+      : (((resp.ganhos_mes || {})[mesKey]) || (resp.ganhos || []));
+    return isNovo ? src : src.filter(function (g) { return (!g.de || mesKey >= g.de) && (!g.ate || mesKey <= g.ate); });
   }
 
   function getFixasDoMes(resp, mesIdx) {
     var mesKey = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
-    var src = (((resp.despesas_fixas_mes || {})[mesKey]) || (resp.despesasFixas || []));
-    return src.filter(function (d) { return (!d.de || mesKey >= d.de) && (!d.ate || mesKey <= d.ate); });
+    var isNovo = mesKey >= '2026-07';
+    var src = isNovo
+      ? ((resp.despesas_fixas_mes || {})[mesKey] || [])
+      : (((resp.despesas_fixas_mes || {})[mesKey]) || (resp.despesasFixas || []));
+    return isNovo ? src : src.filter(function (d) { return (!d.de || mesKey >= d.de) && (!d.ate || mesKey <= d.ate); });
   }
 
   // ── DRE: replica a lógica de cálculo do mes-a-mes.js ──
@@ -175,7 +181,7 @@ Router.register('dashboard', function (container) {
     var items = [];
     resps.forEach(function (resp) {
       getGanhosDoMes(resp, mesIdx).forEach(function (g) {
-        items.push({ data: '—', desc: g.desc || g.nome || 'Receita', valor: g.valor, cat: 'Receita Fixa', resp: resp.nome });
+        items.push({ data: '—', desc: g.desc || g.nome || 'Receita', valor: g.valor, cat: 'Conta a Receber', resp: resp.nome });
       });
     });
     return items;
@@ -227,7 +233,7 @@ Router.register('dashboard', function (container) {
 
     resps.forEach(function (resp) {
       getFixasDoMes(resp, mesIdx).forEach(function (d) {
-        items.push({ data: '—', desc: d.desc || d.nome || 'Despesa Fixa', valor: d.valor, cat: 'Despesa Fixa', resp: resp.nome });
+        items.push({ data: '—', desc: d.desc || d.nome || 'Despesa Fixa', valor: d.valor, cat: 'Conta a Pagar', resp: resp.nome });
       });
     });
 
@@ -265,7 +271,7 @@ Router.register('dashboard', function (container) {
       });
 
       getFixasDoMes(resp, mesIdx).forEach(function (d) {
-        items.push({ data: '—', desc: d.desc || d.nome || 'Despesa Fixa', valor: d.valor, cat: 'Despesa Fixa', resp: resp.nome });
+        items.push({ data: '—', desc: d.desc || d.nome || 'Despesa Fixa', valor: d.valor, cat: 'Conta a Pagar', resp: resp.nome });
       });
 
       AppData.getDespesasManuais(mesIdx, resp.id).forEach(function (d) {
@@ -672,8 +678,8 @@ Router.register('dashboard', function (container) {
       // ── 3 cards ──
       '<div class="summary-grid">' +
         buildCard('ph-scales',           'Saldo · ' + mesNome, saldo, saldo >= 0 ? 'income' : 'expense', saldo >= 0 ? 'dash-card-income' : 'dash-card-expense') +
-        buildCard('ph-arrow-circle-up',  'Receitas · ' + mesNome, dados.receita, 'income',  'dash-card-income',  'receita') +
-        buildCard('ph-arrow-circle-down', 'Despesas · ' + mesNome + (visao === 'cartao' ? ' (Cartão)' : visao === 'dre' ? ' (DRE)' : ''), dados.despesa, 'expense', 'dash-card-expense', 'despesa') +
+        buildCard('ph-arrow-circle-up',  'Contas a Receber · ' + mesNome, dados.receita, 'income',  'dash-card-income',  'receita') +
+        buildCard('ph-arrow-circle-down', 'Contas a Pagar · ' + mesNome + (visao === 'cartao' ? ' (Cartão)' : visao === 'dre' ? ' (DRE)' : ''), dados.despesa, 'expense', 'dash-card-expense', 'despesa') +
       '</div>' +
 
       // ── Resumo de Cartões + Por Categoria ──
@@ -697,7 +703,7 @@ Router.register('dashboard', function (container) {
           '<a href="#mes-a-mes" class="btn btn-outline" style="font-size:13px;padding:6px 14px">Ver DRE</a>' +
         '</div>' +
         '<table class="data-table zebra">' +
-          '<thead><tr><th>Mês</th><th>Receitas</th><th>Despesas</th><th>Resultado</th></tr></thead>' +
+          '<thead><tr><th>Mês</th><th>Contas a Receber</th><th>Contas a Pagar</th><th>Resultado</th></tr></thead>' +
           '<tbody>' + anoRowsHTML + '</tbody>' +
           '<tfoot><tr style="background:#f4f6fb;border-top:2px solid var(--color-border)">' +
             '<td style="font-weight:700">Total ' + anoVal + '</td>' +
@@ -798,7 +804,7 @@ Router.register('dashboard', function (container) {
         ? ' · Cartão' + (cartaoNome ? ' ' + cartaoNome : '')
         : _dashVisao === 'dre' ? ' · DRE' : '';
       var catSufixo = (cat && cat.length > 0) ? ' · ' + (cat.length === 1 ? cat[0] : cat.length + ' cats') : '';
-      var titulo = (tipo === 'receita' ? 'Receitas' : 'Despesas') + ' · ' + mesNome + sufixo + catSufixo;
+      var titulo = (tipo === 'receita' ? 'Contas a Receber' : 'Contas a Pagar') + ' · ' + mesNome + sufixo + catSufixo;
       openDrillModal(tipo, items, titulo);
     });
 
