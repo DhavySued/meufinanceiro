@@ -19,11 +19,10 @@ Router.register('dashboard', function (container) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  // Replica a fonte de receitas do mes-a-mes: ganhos_mes[mesKey] ou ganhos, filtrando pelo campo 'ate'
   function getGanhosDoMes(resp, mesIdx) {
     var mesKey = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
     var src = ((resp.ganhos_mes || {})[mesKey]) || (resp.ganhos || []);
-    return src.filter(function (g) { return !g.ate || mesKey <= g.ate; });
+    return src.filter(function (g) { return (!g.de || mesKey >= g.de) && (!g.ate || mesKey <= g.ate); });
   }
 
   // ── DRE: replica a lógica de cálculo do mes-a-mes.js ──

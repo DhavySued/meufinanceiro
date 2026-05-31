@@ -714,7 +714,7 @@ button { cursor: pointer; border: none; background: none; }
 }
 
 .ganho-row-ganhos {
-  grid-template-columns: 1fr 110px 60px 145px 32px;
+  grid-template-columns: 1fr 110px 60px 120px 120px 32px;
 }
 
 .ganho-row-fixas {

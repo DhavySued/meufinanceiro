@@ -160,7 +160,7 @@ Router.register('mes-a-mes', function (container) {
     function getReceitasQz() {
       var src = ((resp.ganhos_mes || {})[mesKey]) || (resp.ganhos || []);
       var ganhos = src
-        .filter(function (g) { return !g.ate || mesKey <= g.ate; })
+        .filter(function (g) { return (!g.de || mesKey >= g.de) && (!g.ate || mesKey <= g.ate); })
         .map(function (g, i) {
           return { desc: g.desc, valor: g.valor, dia: g.dia || 1, isReceita: true, gIdx: i, ckKey: 'r_' + i };
         });

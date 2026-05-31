@@ -154,7 +154,7 @@ Router.register('cad-responsaveis', function (container) {
     lista.className = 'ganhos-table';
     var header = ganhosList.length
       ? '<div class="ganhos-table-header ganho-row-ganhos">' +
-          '<span>Descrição</span><span>Valor R$</span><span>Dia</span><span>Válido até</span><span></span>' +
+          '<span>Descrição</span><span>Valor R$</span><span>Dia</span><span>De</span><span>Válido até</span><span></span>' +
         '</div>'
       : '';
     lista.innerHTML = header + ganhosList.map(function (g, i) {
@@ -162,6 +162,7 @@ Router.register('cad-responsaveis', function (container) {
         '<input class="ganho-desc" type="text" placeholder="Ex: Salário" value="' + (g.desc || '') + '" />' +
         '<input class="ganho-valor" type="number" placeholder="0,00" min="0" step="0.01" value="' + (g.valor || '') + '" />' +
         '<input class="ganho-dia" type="number" placeholder="Dia" min="1" max="31" value="' + (g.dia || '') + '" />' +
+        '<input class="ganho-de" type="month" value="' + (g.de || '') + '" />' +
         '<input class="ganho-ate" type="month" value="' + (g.ate || '') + '" />' +
         '<button class="ganho-del" data-del="' + i + '" title="Remover">&times;</button>' +
       '</div>';
@@ -174,6 +175,9 @@ Router.register('cad-responsaveis', function (container) {
     });
     lista.querySelectorAll('.ganho-dia').forEach(function (inp, i) {
       inp.addEventListener('input', function () { ganhosList[i].dia = parseInt(inp.value) || 1; });
+    });
+    lista.querySelectorAll('.ganho-de').forEach(function (inp, i) {
+      inp.addEventListener('input', function () { ganhosList[i].de = inp.value || ''; });
     });
     lista.querySelectorAll('.ganho-ate').forEach(function (inp, i) {
       inp.addEventListener('input', function () { ganhosList[i].ate = inp.value || ''; });
