@@ -4,9 +4,11 @@ Router.register('lancamentos', function (container) {
   var filtros = { cat: '', resp: '' }; // estado dos filtros de cabeçalho
 
   function dataPadraoDoMes() {
+    var hoje = new Date();
+    var dd   = String(hoje.getDate()).padStart(2, '0');
     var mm   = String(AppState.mesIdx + 1).padStart(2, '0');
     var yyyy = String(AppState.ano);
-    return '01/' + mm + '/' + yyyy;
+    return dd + '/' + mm + '/' + yyyy;
   }
 
   // ── Máscara de data DD/MM/AAAA ──

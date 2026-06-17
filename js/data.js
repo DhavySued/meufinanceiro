@@ -6,15 +6,16 @@ var AppData = (function () {
   var db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   // ── Cache em memória (populado por init()) ──────────────
-  var cartoes         = [];
-  var responsaveis    = [];
-  var lancamentos     = [];
-  var despesasManuais = []; // in-memory até tabela ser criada
-  var metas           = []; // in-memory até tabela ser criada
-  var categorias      = [];
-  var caixinhas       = [];
-  var importacoes     = [];
-  var dreChecks       = []; // { id, respId, mesIdx, ckKey }
+  var cartoes                 = [];
+  var responsaveis            = [];
+  var lancamentos             = [];
+  var despesasManuais         = []; // in-memory até tabela ser criada
+  var metas                   = []; // in-memory até tabela ser criada
+  var categorias              = [];
+  var caixinhas               = [];
+  var importacoes             = [];
+  var dreChecks               = []; // { id, respId, mesIdx, ckKey }
+  var competenciasEncerradas  = []; // ['YYYY-MM', ...]
 
   // ── Conversão de datas ──────────────────────────────────
   // Supabase armazena AAAA-MM-DD; o app usa DD/MM/AAAA
@@ -46,6 +47,7 @@ var AppData = (function () {
       db.from('importacoes').select('*').order('id', { ascending: false }),
       db.from('despesas_manuais').select('*').order('id'),
       db.from('dre_checks').select('*'),
+      db.from('competencias_encerradas').select('mes_referencia'),
     ]);
 
     results.forEach(function (r, i) {
@@ -61,6 +63,8 @@ var AppData = (function () {
     dreChecks.splice(0, dreChecks.length, ...(results[7].data || []).map(function (r) {
       return { id: r.id, respId: Number(r.resp_id), mesIdx: Number(r.mes_idx), ckKey: r.ck_key };
     }));
+    competenciasEncerradas.splice(0, competenciasEncerradas.length,
+      ...(results[8].data || []).map(function (r) { return r.mes_referencia; }));
 
     var rawManuais = results[6].data || [];
     console.log('[despesas_manuais] erro:', results[6].error);
@@ -116,9 +120,35 @@ var AppData = (function () {
     // ── Lançamentos ─────────────────────────────────────────
     getLancamentos: function () { return lancamentos; },
 
+    // ── Competências Encerradas ──────────────────────────────
+    isEncerrado: function (mesRef) {
+      return competenciasEncerradas.indexOf(mesRef) !== -1;
+    },
+
+    getCompetenciasEncerradas: function () {
+      return competenciasEncerradas.slice();
+    },
+
+    encerrarCompetencia: async function (mesRef) {
+      var { error } = await db.from('competencias_encerradas').insert({ mes_referencia: mesRef });
+      if (error) throw error;
+      if (competenciasEncerradas.indexOf(mesRef) === -1) competenciasEncerradas.push(mesRef);
+    },
+
+    reabrirCompetencia: async function (mesRef) {
+      var { error } = await db.from('competencias_encerradas').delete().eq('mes_referencia', mesRef);
+      if (error) throw error;
+      var idx = competenciasEncerradas.indexOf(mesRef);
+      if (idx !== -1) competenciasEncerradas.splice(idx, 1);
+    },
+
+    // ── Lançamentos ─────────────────────────────────────────
     addLancamento: async function (l) {
+      if (l.mes_referencia && competenciasEncerradas.indexOf(l.mes_referencia) !== -1)
+        throw new Error('Competência ' + l.mes_referencia + ' está encerrada.');
       var payload = Object.assign({}, l);
       delete payload.id;
+      if (payload.desc) payload.desc = payload.desc.toUpperCase();
       if (payload.data) payload.data = toISO(payload.data);
       console.log('[addLancamento] payload:', JSON.stringify(payload));
       var { data, error } = await db.from('lancamentos').insert(payload).select().single();
@@ -132,8 +162,33 @@ var AppData = (function () {
       return row;
     },
 
+    addLancamentosLote: async function (lista) {
+      if (!lista || !lista.length) return [];
+      var payloads = lista.map(function (l) {
+        if (l.mes_referencia && competenciasEncerradas.indexOf(l.mes_referencia) !== -1)
+          throw new Error('Competência ' + l.mes_referencia + ' está encerrada.');
+        var p = Object.assign({}, l);
+        delete p.id;
+        if (p.desc) p.desc = p.desc.toUpperCase();
+        if (p.data) p.data = toISO(p.data);
+        return p;
+      });
+      var { data, error } = await db.from('lancamentos').insert(payloads).select();
+      if (error) throw error;
+      var rows = (data || []).map(normalizeLanc);
+      rows.forEach(function (r) { lancamentos.unshift(r); });
+      return rows;
+    },
+
     updateLancamento: async function (id, dados) {
+      var existing = lancamentos.find(function (x) { return x.id === id; });
+      if (existing) {
+        var mesRef = api.getMesRef(existing);
+        if (mesRef && competenciasEncerradas.indexOf(mesRef) !== -1)
+          throw new Error('Competência ' + mesRef + ' está encerrada.');
+      }
       var payload = Object.assign({}, dados);
+      if (payload.desc) payload.desc = payload.desc.toUpperCase();
       if (payload.data) payload.data = toISO(payload.data);
       var { data, error } = await db.from('lancamentos').update(payload).eq('id', id).select().single();
       if (error) throw error;
@@ -151,6 +206,12 @@ var AppData = (function () {
     },
 
     removeLancamento: async function (id) {
+      var existing = lancamentos.find(function (x) { return x.id === id; });
+      if (existing) {
+        var mesRef = api.getMesRef(existing);
+        if (mesRef && competenciasEncerradas.indexOf(mesRef) !== -1)
+          throw new Error('Competência ' + mesRef + ' está encerrada.');
+      }
       var { error } = await db.from('lancamentos').delete().eq('id', id);
       if (error) throw error;
       var idx = lancamentos.findIndex(function (l) { return l.id === id; });
@@ -162,15 +223,20 @@ var AppData = (function () {
     // Cada registro recebe parcela=p e totalParcelas=l.totalParcelas explicitamente.
     addLancamentosParcelados: async function (l) {
       var partes  = l.data.split('/');
+      var diaBase = parseInt(partes[0]);
       var mesBase = parseInt(partes[1]) - 1; // 0-indexed
       var anoBase = parseInt(partes[2]);
       var criados = [];
 
       for (var p = l.parcela; p <= l.totalParcelas; p++) {
         var offset   = p - l.parcela; // 0 na parcela inicial, cresce 1 por mês
-        var d        = new Date(anoBase, mesBase + offset, 1);
+        var d        = new Date(anoBase, mesBase + offset, diaBase);
+        // Se o mês transbordou (ex: 31/jan + 1 mês = 03/mar), recua para o último dia do mês alvo
+        var mesAlvo  = ((mesBase + offset) % 12 + 12) % 12;
+        if (d.getMonth() !== mesAlvo) d = new Date(anoBase + Math.floor((mesBase + offset) / 12), mesAlvo + 1, 0);
+        var dd       = String(d.getDate()).padStart(2, '0');
         var mm       = String(d.getMonth() + 1).padStart(2, '0');
-        var dataParc = '01/' + mm + '/' + d.getFullYear();
+        var dataParc = dd + '/' + mm + '/' + d.getFullYear();
         var descParc = l.totalParcelas > 1
           ? l.desc + ' (' + p + '/' + l.totalParcelas + ')'
           : l.desc;
@@ -197,9 +263,17 @@ var AppData = (function () {
 
     removeLancamentosEmMassa: async function (ids) {
       if (!ids || !ids.length) return;
-      var { error } = await db.from('lancamentos').delete().in('id', ids);
+      // Filtra silenciosamente IDs de competências encerradas
+      var permitidos = ids.filter(function (id) {
+        var l = lancamentos.find(function (x) { return x.id === id; });
+        if (!l) return true;
+        var mesRef = api.getMesRef(l);
+        return competenciasEncerradas.indexOf(mesRef) === -1;
+      });
+      if (!permitidos.length) return;
+      var { error } = await db.from('lancamentos').delete().in('id', permitidos);
       if (error) throw error;
-      ids.forEach(function (id) {
+      permitidos.forEach(function (id) {
         var idx = lancamentos.findIndex(function (l) { return l.id === id; });
         if (idx !== -1) lancamentos.splice(idx, 1);
       });

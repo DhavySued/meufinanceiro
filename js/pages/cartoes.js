@@ -288,7 +288,7 @@ Router.register('cartoes', function (container) {
     var filtroMesIdx = mesListaIdx; // herda o mês selecionado na lista
     var filtrosCab   = { cat: '', resp: '' }; // filtros de cabeçalho
     var sortState    = { col: 'created_at', dir: -1 };  // padrão: último cadastrado no topo
-    var catColapsado = localStorage.getItem('cartoes-cat-colapsado') === '1';
+    var catColapsado = localStorage.getItem('cartoes-cat-colapsado') !== '0';
 
     var FUNNEL_SVG_D =
       '<svg class="th-funnel-icon" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">' +
@@ -629,11 +629,23 @@ Router.register('cartoes', function (container) {
     }
 
     // ── Renderiza estrutura da página (re-executada ao trocar mês) ──
+    function getMesRefFiltro() {
+      var mm = String(filtroMesIdx + 1).padStart(2, '0');
+      return AppState.ano + '-' + mm;
+    }
+
     function renderPaginaDetalhe() {
-      var mesNome = MESES_NOMES_LISTA[filtroMesIdx];
-      var usado   = AppData.getTotalCartaoMes(c.id, filtroMesIdx);
-      var temAnt  = filtroMesIdx > 0;
-      var temProx = filtroMesIdx < 11;
+      var mesNome    = MESES_NOMES_LISTA[filtroMesIdx];
+      var usado      = AppData.getTotalCartaoMes(c.id, filtroMesIdx);
+      var temAnt     = filtroMesIdx > 0;
+      var temProx    = filtroMesIdx < 11;
+      var encerrado  = AppData.isEncerrado(getMesRefFiltro());
+      var btnNovo    = encerrado
+        ? '<span title="Competência encerrada" style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;' +
+          'background:#f3f4f6;color:#9ca3af;border-radius:8px;font-size:13px;font-weight:600;cursor:not-allowed">' +
+          '<i class="ph-bold ph-lock-simple"></i>Encerrado</span>'
+        : '<button class="btn btn-primary" id="btn-novo-lanc-cartao">+ Novo Lançamento</button>' +
+          '<button class="btn btn-outline" id="btn-adiant-cartao" style="color:#16a34a;border-color:#16a34a">+ Adiantamento</button>';
 
       container.innerHTML =
         '<div class="page-header">' +
@@ -645,37 +657,24 @@ Router.register('cartoes', function (container) {
             '<button class="btn btn-outline" id="btn-mes-ant" style="font-size:16px;padding:5px 12px;line-height:1"' + (temAnt ? '' : ' disabled style="opacity:.4;cursor:default"') + '>‹</button>' +
             '<span style="font-size:14px;font-weight:600;min-width:130px;text-align:center">' + mesNome + ' 2026</span>' +
             '<button class="btn btn-outline" id="btn-mes-prox" style="font-size:16px;padding:5px 12px;line-height:1"' + (temProx ? '' : ' disabled style="opacity:.4;cursor:default"') + '>›</button>' +
-            '<button class="btn btn-primary" id="btn-novo-lanc-cartao">+ Novo Lançamento</button>' +
-            '<button class="btn btn-outline" id="btn-adiant-cartao" style="color:#16a34a;border-color:#16a34a">+ Adiantamento</button>' +
+            btnNovo +
           '</div>' +
         '</div>' +
 
-        '<div style="display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:start;margin-bottom:24px" class="detalhe-cartao-grid">' +
-          '<div class="credit-card" style="max-width:300px;cursor:default;background:' + cardStyle.gradient + ';color:' + cardStyle.textColor + '">' +
-            '<div class="card-gloss"></div>' +
-            '<div class="card-top">' +
-              '<div>' + getBancoLogoHTML(c.nome, cardStyle.textColor) + '</div>' +
-              '<div>' + getBandeiraHTML(c.bandeira) + '</div>' +
-            '</div>' +
-            '<div class="card-name" style="margin:10px 0 0">' + c.nome + '</div>' +
-            '<div class="card-number">•••• •••• •••• ••••</div>' +
-            '<div class="card-bottom">' +
-              '<div class="card-limit-label">Fatura ' + mesNome + '</div>' +
-              '<div class="card-amounts">' +
-                '<span id="card-fatura-valor" style="font-size:18px;font-weight:700">' + fmtR(usado) + '</span>' +
-              '</div>' +
-              '<div style="font-size:11px;opacity:0.65;margin-top:4px">Fecha dia ' + c.fechamento + ' · Vence dia ' + c.vencimento + '</div>' +
-            '</div>' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;' +
+             'padding:14px 20px;background:var(--color-surface);border:1px solid var(--color-border);' +
+             'border-radius:12px;margin-bottom:16px">' +
+          '<div>' +
+            '<div style="font-size:12px;color:#6b7280;font-weight:500;margin-bottom:2px">Fatura ' + mesNome + ' · Fecha dia ' + c.fechamento + ' · Vence dia ' + c.vencimento + '</div>' +
+            '<div style="font-size:22px;font-weight:700" id="card-fatura-valor" class="amount-expense">' + fmtR(usado) + '</div>' +
           '</div>' +
-          '<div class="section-box" style="margin:0">' +
-            '<div class="section-box-header">' +
-              '<h2>Gastos por Categoria</h2>' +
-              '<button id="btn-toggle-cat" class="btn btn-outline" style="font-size:12px;padding:4px 10px">' +
-                (catColapsado ? 'Mostrar ▼' : 'Ocultar ▲') +
-              '</button>' +
-            '</div>' +
-            '<div id="cat-box"' + (catColapsado ? ' style="display:none"' : '') + '></div>' +
-          '</div>' +
+          '<button id="btn-toggle-cat" class="btn btn-outline" style="font-size:12px;padding:6px 12px">' +
+            (catColapsado ? '<i class="ph ph-chart-bar" style="margin-right:4px"></i>Ver por Categoria' : '<i class="ph ph-chart-bar" style="margin-right:4px"></i>Ocultar Categorias') +
+          '</button>' +
+        '</div>' +
+        '<div class="section-box" id="cat-section"' + (catColapsado ? ' style="display:none;margin-bottom:16px"' : ' style="margin-bottom:16px"') + '>' +
+          '<div class="section-box-header"><h2>Gastos por Categoria</h2></div>' +
+          '<div id="cat-box"></div>' +
         '</div>' +
 
         '<div class="section-box">' +
@@ -749,11 +748,15 @@ Router.register('cartoes', function (container) {
       document.getElementById('btn-toggle-cat').addEventListener('click', function () {
         catColapsado = !catColapsado;
         localStorage.setItem('cartoes-cat-colapsado', catColapsado ? '1' : '0');
-        document.getElementById('cat-box').style.display = catColapsado ? 'none' : '';
-        this.textContent = catColapsado ? 'Mostrar ▼' : 'Ocultar ▲';
+        document.getElementById('cat-section').style.display = catColapsado ? 'none' : '';
+        this.innerHTML = catColapsado
+          ? '<i class="ph ph-chart-bar" style="margin-right:4px"></i>Ver por Categoria'
+          : '<i class="ph ph-chart-bar" style="margin-right:4px"></i>Ocultar Categorias';
       });
-      document.getElementById('btn-novo-lanc-cartao').addEventListener('click', abrirNovo);
-      document.getElementById('btn-adiant-cartao').addEventListener('click', abrirAdiantamento);
+      if (!AppData.isEncerrado(getMesRefFiltro())) {
+        document.getElementById('btn-novo-lanc-cartao').addEventListener('click', abrirNovo);
+        document.getElementById('btn-adiant-cartao').addEventListener('click', abrirAdiantamento);
+      }
       // ── Sort: clique nos cabeçalhos (exceto no ícone de filtro) ──
       ['created_at', 'data', 'desc', 'cat', 'resp', 'valor'].forEach(function (col) {
         document.getElementById('th-col-' + col).addEventListener('click', function (e) {
@@ -1179,7 +1182,7 @@ Router.register('cartoes', function (container) {
         var yyyy    = d.getFullYear();
         var mm      = String(d.getMonth() + 1).padStart(2, '0');
         var mesRef  = yyyy + '-' + mm;
-        var dataISO = yyyy + '-' + mm + '-01'; // primeiro dia do mês da parcela
+        var dataISO = somarMeses(f.dataISO, offset);
         return {
           data:            dataISO,
           mes_referencia:  mesRef,
@@ -1199,21 +1202,21 @@ Router.register('cartoes', function (container) {
 
       try {
         var parcelaFim = replicar ? f.parcelas : f.parcelaIni;
+        var lote = [];
 
         for (var p = f.parcelaIni; p <= parcelaFim; p++) {
-          var offset = p - f.parcelaIni; // 0 na primeira parcela, +1 por mês
-
+          var offset = p - f.parcelaIni;
           if (f.isDividido && f.splits.length > 0) {
-            // Divide: valor da parcela dividido igualmente entre os responsáveis
             var valorPorSplit = Math.round((valorParcela / f.splits.length) * 100) / 100;
             for (var si = 0; si < f.splits.length; si++) {
-              var s = f.splits[si];
-              await AppData.addLancamento(buildLanc(offset, p, s.respId, s.respNome, valorPorSplit));
+              lote.push(buildLanc(offset, p, f.splits[si].respId, f.splits[si].respNome, valorPorSplit));
             }
           } else {
-            await AppData.addLancamento(buildLanc(offset, p, f.respId, f.respNome, valorParcela));
+            lote.push(buildLanc(offset, p, f.respId, f.respNome, valorParcela));
           }
         }
+
+        await AppData.addLancamentosLote(lote);
 
         fecharModal();
         renderTabela();
@@ -1234,6 +1237,10 @@ Router.register('cartoes', function (container) {
     }
 
     async function onSalvar() {
+      if (AppData.isEncerrado(getMesRefFiltro())) {
+        alert('Competência ' + getMesRefFiltro() + ' está encerrada. Nenhum lançamento pode ser incluído ou alterado.');
+        return;
+      }
       var f = lerFormulario();
       if (!f.desc || isNaN(f.total) || f.total <= 0) {
         alert('Preencha a descrição e o valor corretamente.');
@@ -1369,8 +1376,10 @@ Router.register('cartoes', function (container) {
     }
 
     function abrirAdiantamento() {
-      var mm = String(filtroMesIdx + 1).padStart(2, '0');
-      document.getElementById('adiant-data').value  = AppState.ano + '-' + mm + '-01';
+      var mm   = String(filtroMesIdx + 1).padStart(2, '0');
+      var hoje = new Date();
+      var dd   = String(hoje.getDate()).padStart(2, '0');
+      document.getElementById('adiant-data').value  = AppState.ano + '-' + mm + '-' + dd;
       document.getElementById('adiant-valor').value = '';
       document.getElementById('adiant-desc').value  = '';
       document.getElementById('adiant-cat').selectedIndex = 0;
