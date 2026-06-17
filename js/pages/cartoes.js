@@ -599,7 +599,7 @@ Router.register('cartoes', function (container) {
 
       // Excluir selecionados
       if (btnExcluirSel) {
-        btnExcluirSel.addEventListener('click', async function () {
+        btnExcluirSel.onclick = async function () {
           var ids = getSelecionados();
           if (!ids.length) return;
           if (!confirm('Excluir ' + ids.length + ' lançamento' + (ids.length !== 1 ? 's' : '') + '? Essa ação não pode ser desfeita.')) return;
@@ -617,7 +617,7 @@ Router.register('cartoes', function (container) {
           }
 
           renderTabela();
-        });
+        };
       }
 
       if (btnExcluirSel) {
