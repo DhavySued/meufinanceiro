@@ -39,7 +39,7 @@ Router.register('dashboard', function (container) {
 
   // ── DRE: replica a lógica de cálculo do mes-a-mes.js ──
   function calcDREResp(mesIdx, resp, cat) {
-    var mesNum = String(mesIdx + 1).padStart(2, '0');
+    var mesRef = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
 
     var respId = resp.id;
 
@@ -50,7 +50,7 @@ Router.register('dashboard', function (container) {
       AppData.getLancamentos()
         .filter(function (l) {
           if (l.cartaoId !== c.id) return false;
-          if (l.data.split('/')[1] !== mesNum) return false;
+          if (AppData.getMesRef(l) !== mesRef) return false;
           if (cat && cat.length > 0 && cat.indexOf(l.cat) === -1) return false;
           if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respId; });
           return l.responsavelId === respId;
@@ -69,7 +69,7 @@ Router.register('dashboard', function (container) {
 
     (resp.orcamentos || []).forEach(function (m) {
       var gasto = AppData.getLancamentos()
-        .filter(function (l) { return l.cat === m.catNome && l.data.split('/')[1] === mesNum && l.responsavelId === respId; })
+        .filter(function (l) { return l.cat === m.catNome && AppData.getMesRef(l) === mesRef && l.responsavelId === respId; })
         .reduce(function (s, l) { return s + (l.tipo === 'receita' ? -Math.abs(l.valor) : Math.abs(l.valor)); }, 0);
       totalD += Math.max(0, m.limite - gasto);
     });
@@ -98,7 +98,7 @@ Router.register('dashboard', function (container) {
 
   // ── Totais "Apenas Cartão" (gastos reais nos cartões + receitas DRE) ──
   function calcSummaryCartao(mesIdx, respId, cartaoId, cat) {
-    var mesNum  = String(mesIdx + 1).padStart(2, '0');
+    var mesRef  = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
 
     var respInt = respId !== 'geral' ? parseInt(respId) : null;
 
@@ -123,7 +123,7 @@ Router.register('dashboard', function (container) {
       AppData.getLancamentos()
         .filter(function (l) {
           if (l.cartaoId !== c.id) return false;
-          if (l.data.split('/')[1] !== mesNum) return false;
+          if (AppData.getMesRef(l) !== mesRef) return false;
           if (cat && cat.length > 0 && cat.indexOf(l.cat) === -1) return false;
           if (respInt !== null) {
             if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respInt; });
@@ -148,7 +148,7 @@ Router.register('dashboard', function (container) {
 
   // ── Totais "Apenas DRE" (fixas + manuais + orçamentos, sem cartão) ──
   function calcSummaryDREOnly(mesIdx, respId) {
-    var mesNum = String(mesIdx + 1).padStart(2, '0');
+    var mesRef = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
 
     var resps  = respId === 'geral'
       ? AppData.getFluxoCaixa()
@@ -160,7 +160,7 @@ Router.register('dashboard', function (container) {
 
       (resp.orcamentos || []).forEach(function (m) {
         var gasto = AppData.getLancamentos()
-          .filter(function (l) { return l.cat === m.catNome && l.data.split('/')[1] === mesNum && l.responsavelId === resp.id; })
+          .filter(function (l) { return l.cat === m.catNome && AppData.getMesRef(l) === mesRef && l.responsavelId === resp.id; })
           .reduce(function (s, l) { return s + (l.tipo === 'receita' ? -Math.abs(l.valor) : Math.abs(l.valor)); }, 0);
         despesa += Math.max(0, m.limite - gasto);
       });
@@ -189,7 +189,7 @@ Router.register('dashboard', function (container) {
 
   // ── Drill-down Despesas DRE (todos os tipos) ──
   function getDrillDespesasDRE(mesIdx, respId, cat) {
-    var mesNum  = String(mesIdx + 1).padStart(2, '0');
+    var mesRef  = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
 
     var respInt = respId !== 'geral' ? parseInt(respId) : null;
     var resps   = respId === 'geral'
@@ -201,7 +201,7 @@ Router.register('dashboard', function (container) {
       AppData.getLancamentos()
         .filter(function (l) {
           if (l.cartaoId !== c.id) return false;
-          if (l.data.split('/')[1] !== mesNum) return false;
+          if (AppData.getMesRef(l) !== mesRef) return false;
           if (cat && cat.length > 0 && cat.indexOf(l.cat) === -1) return false;
           if (respInt !== null) {
             if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respInt; });
@@ -224,7 +224,7 @@ Router.register('dashboard', function (container) {
     resps.forEach(function (resp) {
       (resp.orcamentos || []).forEach(function (m) {
         var gasto = AppData.getLancamentos()
-          .filter(function (l) { return l.cat === m.catNome && l.data.split('/')[1] === mesNum && l.responsavelId === resp.id && l.tipo !== 'receita'; })
+          .filter(function (l) { return l.cat === m.catNome && AppData.getMesRef(l) === mesRef && l.responsavelId === resp.id && l.tipo !== 'receita'; })
           .reduce(function (s, l) { return s + Math.abs(l.valor); }, 0);
         var reserva = Math.max(0, m.limite - gasto);
         if (reserva > 0) items.push({ data: '—', desc: 'Reserva: ' + m.catNome, valor: reserva, cat: 'Orçamento', resp: resp.nome });
@@ -254,7 +254,7 @@ Router.register('dashboard', function (container) {
 
   // ── Drill-down Despesas DRE Only (fixas + manuais + orçamentos, sem cartão) ──
   function getDrillDespesasDREOnly(mesIdx, respId) {
-    var mesNum = String(mesIdx + 1).padStart(2, '0');
+    var mesRef = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
 
     var resps  = respId === 'geral'
       ? AppData.getFluxoCaixa()
@@ -264,7 +264,7 @@ Router.register('dashboard', function (container) {
     resps.forEach(function (resp) {
       (resp.orcamentos || []).forEach(function (m) {
         var gasto = AppData.getLancamentos()
-          .filter(function (l) { return l.cat === m.catNome && l.data.split('/')[1] === mesNum && l.responsavelId === resp.id && l.tipo !== 'receita'; })
+          .filter(function (l) { return l.cat === m.catNome && AppData.getMesRef(l) === mesRef && l.responsavelId === resp.id && l.tipo !== 'receita'; })
           .reduce(function (s, l) { return s + Math.abs(l.valor); }, 0);
         var reserva = Math.max(0, m.limite - gasto);
         if (reserva > 0) items.push({ data: '—', desc: 'Reserva: ' + m.catNome, valor: reserva, cat: 'Orçamento', resp: resp.nome });
@@ -284,7 +284,7 @@ Router.register('dashboard', function (container) {
 
   // ── Drill-down Despesas Cartão (somente lançamentos de cartão) ──
   function getDrillDespesasCartao(mesIdx, respId, cartaoId, cat) {
-    var mesNum  = String(mesIdx + 1).padStart(2, '0');
+    var mesRef  = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
 
     var respInt = respId !== 'geral' ? parseInt(respId) : null;
     var cartoesFiltro = cartaoId
@@ -296,7 +296,7 @@ Router.register('dashboard', function (container) {
       AppData.getLancamentos()
         .filter(function (l) {
           if (l.cartaoId !== c.id) return false;
-          if (l.data.split('/')[1] !== mesNum) return false;
+          if (AppData.getMesRef(l) !== mesRef) return false;
           if (cat && cat.length > 0 && cat.indexOf(l.cat) === -1) return false;
           if (respInt !== null) {
             if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respInt; });
@@ -327,7 +327,7 @@ Router.register('dashboard', function (container) {
 
   // ── Adiantamentos ──
   function calcSummaryAdiantamento(mesIdx, effRespId, cartaoId) {
-    var mesNum  = String(mesIdx + 1).padStart(2, '0');
+    var mesRef  = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
     var respInt = effRespId !== 'geral' ? parseInt(effRespId) : null;
     var cFiltro = cartaoId
       ? AppData.cartoes.filter(function (c) { return c.id === parseInt(cartaoId); })
@@ -338,7 +338,7 @@ Router.register('dashboard', function (container) {
         .filter(function (l) {
           if (l.cartaoId !== c.id) return false;
           if (l.tipo !== 'receita') return false;
-          if (l.data.split('/')[1] !== mesNum) return false;
+          if (AppData.getMesRef(l) !== mesRef) return false;
           if (respInt !== null) {
             if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respInt; });
             return l.responsavelId === respInt;
@@ -351,7 +351,7 @@ Router.register('dashboard', function (container) {
   }
 
   function getDrillAdiantamentos(mesIdx, effRespId, cartaoId) {
-    var mesNum  = String(mesIdx + 1).padStart(2, '0');
+    var mesRef  = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
     var respInt = effRespId !== 'geral' ? parseInt(effRespId) : null;
     var cFiltro = cartaoId
       ? AppData.cartoes.filter(function (c) { return c.id === parseInt(cartaoId); })
@@ -362,7 +362,7 @@ Router.register('dashboard', function (container) {
         .filter(function (l) {
           if (l.cartaoId !== c.id) return false;
           if (l.tipo !== 'receita') return false;
-          if (l.data.split('/')[1] !== mesNum) return false;
+          if (AppData.getMesRef(l) !== mesRef) return false;
           if (respInt !== null) {
             if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respInt; });
             return l.responsavelId === respInt;
@@ -461,14 +461,14 @@ Router.register('dashboard', function (container) {
       return AppData.cartoes.map(function (c) { return { cartao: c, total: 0 }; });
     }
     if (visao === 'adiantamento') {
-      var mesNum2  = String(mesIdx + 1).padStart(2, '0');
+      var mesRef2  = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
       var respInt2 = respId !== 'geral' ? parseInt(respId) : null;
       return AppData.cartoes.map(function (c) {
         var total = AppData.getLancamentos()
           .filter(function (l) {
             if (l.cartaoId !== c.id) return false;
             if (l.tipo !== 'receita') return false;
-            if (l.data.split('/')[1] !== mesNum2) return false;
+            if (AppData.getMesRef(l) !== mesRef2) return false;
             if (respInt2 !== null) {
               if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respInt2; });
               return l.responsavelId === respInt2;
@@ -479,7 +479,7 @@ Router.register('dashboard', function (container) {
         return { cartao: c, total: total };
       });
     }
-    var mesNum  = String(mesIdx + 1).padStart(2, '0');
+    var mesRef  = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
     var respInt = respId !== 'geral' ? parseInt(respId) : null;
     // Apenas Cartão com cartão específico: filtra a lista de cartões
     var cartoesFiltro = (visao === 'cartao' && cartaoId)
@@ -489,7 +489,7 @@ Router.register('dashboard', function (container) {
       var total = AppData.getLancamentos()
         .filter(function (l) {
           if (l.cartaoId !== c.id) return false;
-          if (l.data.split('/')[1] !== mesNum) return false;
+          if (AppData.getMesRef(l) !== mesRef) return false;
           if (cat && cat.length > 0 && cat.indexOf(l.cat) === -1) return false;
           if (respInt !== null) {
             if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respInt; });
@@ -648,12 +648,12 @@ Router.register('dashboard', function (container) {
     var validCatMap = {};
     AppData.categorias.forEach(function (c) { validCatMap[c.nome] = c.cor; });
     var porCat = {};
-    var mesNum = String(AppState.mesIdx + 1).padStart(2, '0');
+    var mesRefRender = String(AppState.ano) + '-' + String(AppState.mesIdx + 1).padStart(2, '0');
 
     var respIntCat = (!isMulti && effRespId !== 'geral') ? parseInt(effRespId) : null;
     AppData.getLancamentos().forEach(function (l) {
       if (!validCatMap[l.cat]) return;
-      if (l.data.split('/')[1] !== mesNum) return;
+      if (AppData.getMesRef(l) !== mesRefRender) return;
       if (l.tipo === 'receita') return;
       if (cat && cat.length > 0 && cat.indexOf(l.cat) === -1) return;
       if (visao === 'cartao') {
@@ -686,7 +686,7 @@ Router.register('dashboard', function (container) {
     // Categorias disponíveis no mês (para o select)
     var catsDisp = [];
     AppData.getLancamentos().forEach(function (l) {
-      if (l.data.split('/')[1] === mesNum && l.cat && catsDisp.indexOf(l.cat) === -1) catsDisp.push(l.cat);
+      if (AppData.getMesRef(l) === mesRefRender && l.cat && catsDisp.indexOf(l.cat) === -1) catsDisp.push(l.cat);
     });
     catsDisp.sort();
     var catLabel = cat.length === 0 || cat.length === catsDisp.length

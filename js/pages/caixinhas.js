@@ -490,10 +490,10 @@ Router.register('caixinhas', function (container) {
   // ── Popup: Separar Fatura para Caixinha ──
 
   function getDespCartaoRespValor(mesIdx, respId, cartaoId) {
-    var mesNum = String(mesIdx + 1).padStart(2, '0');
+    var mesRef = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
     var lancs = AppData.getLancamentos().filter(function (l) {
       if (l.cartaoId !== cartaoId) return false;
-      if (l.data.split('/')[1] !== mesNum) return false;
+      if (AppData.getMesRef(l) !== mesRef) return false;
       if (l.isDividido && l.splits) {
         return l.splits.some(function (s) { return s.respId === respId; });
       }

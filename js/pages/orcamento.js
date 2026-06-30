@@ -10,10 +10,10 @@ Router.register('orcamento', function (container) {
 
   // Soma de lançamentos de uma categoria no mês selecionado
   function gastoCategoriaMes(catNome, mesIdx) {
-    var mesNum = String(mesIdx + 1).padStart(2, '0');
+    var mesRef = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
     return AppData.getLancamentos()
       .filter(function (l) {
-        return l.cat === catNome && l.data.split('/')[1] === mesNum;
+        return l.cat === catNome && AppData.getMesRef(l) === mesRef;
       })
       .reduce(function (s, l) { return s + l.valor; }, 0);
   }

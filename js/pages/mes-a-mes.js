@@ -21,11 +21,11 @@ Router.register('mes-a-mes', function (container) {
 
   // ── Despesas de cartão reais (lançamentos) filtradas por responsável e mês ──
   function getDespCartaoResp(mesIdx, respId) {
-    var mesNum = String(mesIdx + 1).padStart(2, '0');
+    var mesRef = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
     return AppData.getCartoesFluxo().map(function (c) {
       var lancs = AppData.getLancamentos().filter(function (l) {
         if (l.cartaoId !== c.id) return false;
-        if (l.data.split('/')[1] !== mesNum) return false;
+        if (AppData.getMesRef(l) !== mesRef) return false;
         if (l.isDividido && l.splits) {
           return l.splits.some(function (s) { return s.respId === respId; });
         }
@@ -354,10 +354,9 @@ Router.register('mes-a-mes', function (container) {
 
     // Gasto real de uma categoria no mês (inclui lançamentos divididos)
     function gastoCategoriaMes(catNome) {
-      var mesNum = String(mesIdx + 1).padStart(2, '0');
       var net = AppData.getLancamentos()
         .filter(function (l) {
-          if (l.cat !== catNome || l.data.split('/')[1] !== mesNum) return false;
+          if (l.cat !== catNome || AppData.getMesRef(l) !== mesKey) return false;
           if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respId; });
           return l.responsavelId === respId;
         })
@@ -518,14 +517,13 @@ Router.register('mes-a-mes', function (container) {
     }
 
     function buildCatPanel() {
-      var mesNum = String(mesIdx + 1).padStart(2, '0');
       var porCat = {};
 
       AppData.categorias.forEach(function (cat) { porCat[cat.nome] = 0; });
 
       AppData.getLancamentos().forEach(function (l) {
         if (!l.cartaoId) return;
-        if (l.data.split('/')[1] !== mesNum) return;
+        if (AppData.getMesRef(l) !== mesKey) return;
         var valor = 0;
         if (l.isDividido && l.splits) {
           var sp = l.splits.find(function (s) { return s.respId === respId; });
