@@ -73,6 +73,18 @@ document.addEventListener('DOMContentLoaded', async function () {
     return val;
   }
 
+  window.atualizarIndicadorEncerrado = function () {
+    var mm     = String(AppState.mesIdx + 1).padStart(2, '0');
+    var mesRef = AppState.ano + '-' + mm;
+    var enc    = AppData.isEncerrado(mesRef);
+    var icone  = document.getElementById('comp-encerrado-icone');
+    if (icone) {
+      icone.style.display = enc ? 'inline-flex' : 'none';
+      icone.title = enc ? 'Competência encerrada' : '';
+    }
+  };
+  var atualizarIndicadorEncerrado = window.atualizarIndicadorEncerrado;
+
   function navegarMes(delta) {
     var m = AppState.mesIdx + delta;
     var a = AppState.ano;
@@ -81,6 +93,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     var sel = document.getElementById('sel-competencia-global');
     if (sel) sel.value = garantirOpcao(sel, m, a);
     AppState.set(m, a);
+    atualizarIndicadorEncerrado();
     Router.refresh();
   }
 
@@ -103,8 +116,16 @@ document.addEventListener('DOMContentLoaded', async function () {
   selComp.addEventListener('change', function () {
     var p = this.value.split('/');
     AppState.set(parseInt(p[0]), parseInt(p[1]));
+    atualizarIndicadorEncerrado();
     Router.refresh();
   });
+
+  var encIcone = document.createElement('span');
+  encIcone.id = 'comp-encerrado-icone';
+  encIcone.style.cssText = 'display:none;align-items:center;justify-content:center;' +
+    'width:28px;height:28px;border-radius:50%;background:#fef3c7;color:#d97706;' +
+    'font-size:15px;flex-shrink:0;cursor:default';
+  encIcone.innerHTML = '<i class="ph-bold ph-lock-simple" style="pointer-events:none"></i>';
 
   var btnAnt = document.createElement('button');
   btnAnt.id = 'btn-comp-ant';
@@ -125,9 +146,12 @@ document.addEventListener('DOMContentLoaded', async function () {
   compNav.appendChild(btnAnt);
   compNav.appendChild(selComp);
   compNav.appendChild(btnProx);
+  compNav.appendChild(encIcone);
 
   var topBarRight = document.querySelector('.top-bar-right');
   if (topBarRight) topBarRight.insertBefore(compNav, topBarRight.firstChild);
+
+  atualizarIndicadorEncerrado();
 
   Router.init();
 

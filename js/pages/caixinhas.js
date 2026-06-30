@@ -424,6 +424,390 @@ Router.register('caixinhas', function (container) {
     });
   }
 
+  // ── Popup: Separar Fatura para Caixinha ──
+
+  function getDespCartaoRespValor(mesIdx, respId, cartaoId) {
+    var mesNum = String(mesIdx + 1).padStart(2, '0');
+    var lancs = AppData.getLancamentos().filter(function (l) {
+      if (l.cartaoId !== cartaoId) return false;
+      if (l.data.split('/')[1] !== mesNum) return false;
+      if (l.isDividido && l.splits) {
+        return l.splits.some(function (s) { return s.respId === respId; });
+      }
+      return l.responsavelId === respId;
+    });
+    var total = lancs.reduce(function (s, l) {
+      var v;
+      if (l.isDividido && l.splits) {
+        var sp = l.splits.find(function (x) { return x.respId === respId; });
+        v = sp ? Math.abs(sp.valor) : 0;
+      } else {
+        v = Math.abs(l.valor);
+      }
+      return s + (l.tipo === 'receita' ? -v : v);
+    }, 0);
+    return Math.max(0, total);
+  }
+
+  function abrirModalSepararFatura() {
+    var ant = document.getElementById('modal-sep-fatura');
+    if (ant) ant.remove();
+
+    var mesIdx  = AppState.mesIdx;
+    var mesNome = MESES_NOME[mesIdx] + ' ' + AppState.ano;
+
+    var admins  = AppData.getFluxoCaixa();
+    var cartoes = AppData.cartoes;
+
+    if (!admins.length)  { alert('Nenhum responsável cadastrado.');  return; }
+    if (!cartoes.length) { alert('Nenhum cartão cadastrado.'); return; }
+
+    var optsResp = admins.map(function (r) {
+      return '<option value="' + r.id + '">' + r.nome + '</option>';
+    }).join('');
+
+    var optsCartao = cartoes.map(function (c) {
+      return '<option value="' + c.id + '">' + c.nome + '</option>';
+    }).join('');
+
+    var optsCaixinha = '<option value="nova">+ Criar nova caixinha</option>' +
+      AppData.caixinhas.map(function (c) {
+        return '<option value="' + c.id + '">' + c.nome + ' (' + fmtR(getSaldo(c)) + ')</option>';
+      }).join('');
+
+    var m = document.createElement('div');
+    m.className = 'modal-overlay';
+    m.id = 'modal-sep-fatura';
+    m.innerHTML =
+      '<div class="modal">' +
+        '<div class="modal-header">' +
+          '<h3><i class="ph ph-piggy-bank" style="margin-right:6px"></i>Separar Fatura para Caixinha</h3>' +
+          '<button class="modal-close" id="btn-sf-fechar">&times;</button>' +
+        '</div>' +
+        '<div class="modal-body">' +
+          '<div style="display:inline-flex;align-items:center;gap:6px;background:#eff6ff;color:#3b82f6;' +
+               'border:1px solid #bfdbfe;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;margin-bottom:16px">' +
+            '<i class="ph ph-calendar"></i>&nbsp;' + mesNome +
+          '</div>' +
+          '<div class="form-row">' +
+            '<div class="form-group">' +
+              '<label>Responsável</label>' +
+              '<select id="sf-resp">' + optsResp + '</select>' +
+            '</div>' +
+            '<div class="form-group">' +
+              '<label>Cartão</label>' +
+              '<select id="sf-cartao">' + optsCartao + '</select>' +
+            '</div>' +
+          '</div>' +
+          '<div id="sf-dre-box" style="border-radius:10px;padding:12px 16px;margin-bottom:14px;' +
+               'display:flex;align-items:center;justify-content:space-between;transition:background .2s,border-color .2s;' +
+               'background:#f0fdf4;border:1px solid #bbf7d0">' +
+            '<div>' +
+              '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#15803d">Valor da DRE</div>' +
+              '<div id="sf-dre-valor" style="font-size:20px;font-weight:800;color:#15803d">R$ 0,00</div>' +
+            '</div>' +
+            '<i class="ph-fill ph-receipt" style="font-size:28px;color:#86efac"></i>' +
+          '</div>' +
+          '<div class="form-row">' +
+            '<div class="form-group">' +
+              '<label>Valor a separar (R$)</label>' +
+              '<input type="number" id="sf-valor" placeholder="0,00" min="0" step="0.01" />' +
+            '</div>' +
+            '<div class="form-group">' +
+              '<label>Data</label>' +
+              '<input type="text" id="sf-data" maxlength="10" value="' + hoje() + '" />' +
+            '</div>' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>Caixinha destino</label>' +
+            '<select id="sf-caixinha">' + optsCaixinha + '</select>' +
+          '</div>' +
+          '<div id="sf-nova-grupo" class="form-group" style="display:none">' +
+            '<label>Nome da nova caixinha</label>' +
+            '<input type="text" id="sf-nova-nome" placeholder="Ex: Nubank" />' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>Descrição do lançamento</label>' +
+            '<input type="text" id="sf-desc" />' +
+          '</div>' +
+        '</div>' +
+        '<div class="modal-footer">' +
+          '<button class="btn btn-outline" id="btn-sf-cancelar">Cancelar</button>' +
+          '<button class="btn btn-primary" id="btn-sf-salvar">' +
+            '<i class="ph ph-piggy-bank" style="margin-right:5px"></i>Separar' +
+          '</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(m);
+    m.classList.add('open');
+
+    function getResp()   { return parseInt(document.getElementById('sf-resp').value); }
+    function getCartao() { return parseInt(document.getElementById('sf-cartao').value); }
+
+    function atualizarDRE() {
+      var v      = getDespCartaoRespValor(mesIdx, getResp(), getCartao());
+      var dreEl  = document.getElementById('sf-dre-valor');
+      var dreBox = document.getElementById('sf-dre-box');
+      dreEl.textContent         = fmtR(v);
+      dreEl.style.color         = v > 0 ? '#15803d' : '#9ca3af';
+      dreBox.style.background   = v > 0 ? '#f0fdf4' : '#f8fafc';
+      dreBox.style.borderColor  = v > 0 ? '#bbf7d0' : '#e2e8f0';
+      document.getElementById('sf-valor').value = v > 0 ? v.toFixed(2) : '';
+      atualizarDescECaixinha();
+    }
+
+    function atualizarDescECaixinha() {
+      var resp     = AppData.getById(getResp());
+      var cartao   = AppData.cartoes.find(function (c) { return c.id === getCartao(); });
+      var respNome   = resp   ? resp.nome.split(' ')[0] : '';
+      var cartaoNome = cartao ? cartao.nome             : '';
+
+      var nomeInput = document.getElementById('sf-nova-nome');
+      if (nomeInput.dataset.touched !== '1') nomeInput.value = cartaoNome;
+
+      var descInput = document.getElementById('sf-desc');
+      if (descInput.dataset.touched !== '1')
+        descInput.value = 'Fatura ' + cartaoNome + (respNome ? ' · ' + respNome : '');
+    }
+
+    function atualizarVisNova() {
+      document.getElementById('sf-nova-grupo').style.display =
+        document.getElementById('sf-caixinha').value === 'nova' ? '' : 'none';
+    }
+
+    document.getElementById('sf-nova-nome').addEventListener('input', function () { this.dataset.touched = '1'; });
+    document.getElementById('sf-desc').addEventListener('input',      function () { this.dataset.touched = '1'; });
+    document.getElementById('sf-resp').addEventListener('change',    atualizarDRE);
+    document.getElementById('sf-cartao').addEventListener('change',  atualizarDRE);
+    document.getElementById('sf-caixinha').addEventListener('change', atualizarVisNova);
+
+    atualizarDRE();
+    atualizarVisNova();
+
+    function fechar() { m.classList.remove('open'); setTimeout(function () { m.remove(); }, 300); }
+    document.getElementById('btn-sf-fechar').onclick   = fechar;
+    document.getElementById('btn-sf-cancelar').onclick = fechar;
+    m.addEventListener('click', function (e) { if (e.target === m) fechar(); });
+
+    document.getElementById('btn-sf-salvar').onclick = async function () {
+      var valor = parseFloat(document.getElementById('sf-valor').value);
+      var desc  = document.getElementById('sf-desc').value.trim();
+      var data  = document.getElementById('sf-data').value.trim() || hoje();
+      var cxSel = document.getElementById('sf-caixinha').value;
+
+      if (!desc)                            { alert('Informe a descrição do lançamento.'); return; }
+      if (isNaN(valor) || valor <= 0)       { alert('Informe um valor válido.');           return; }
+
+      var btn = document.getElementById('btn-sf-salvar');
+      btn.disabled     = true;
+      btn.textContent  = 'Separando...';
+
+      try {
+        var caixinhaId;
+        if (cxSel === 'nova') {
+          var nomeCx = document.getElementById('sf-nova-nome').value.trim();
+          if (!nomeCx) {
+            alert('Informe o nome da nova caixinha.');
+            btn.disabled    = false;
+            btn.innerHTML   = '<i class="ph ph-piggy-bank" style="margin-right:5px"></i>Separar';
+            return;
+          }
+          var novaCx = await AppData.addCaixinha({ nome: nomeCx, cor: CORES[0], meta: 0, responsavelId: null });
+          caixinhaId = novaCx.id;
+        } else {
+          caixinhaId = parseInt(cxSel);
+        }
+
+        await AppData.addLancCaixinha(caixinhaId, { tipo: 'entrada', desc: desc, valor: valor, data: data });
+        fechar();
+        renderMain(true);
+      } catch (err) {
+        console.error('[sep-fatura] erro:', err);
+        alert('Erro ao separar: ' + (err.message || JSON.stringify(err)));
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="ph ph-piggy-bank" style="margin-right:5px"></i>Separar';
+      }
+    };
+  }
+
+  function abrirModalSepararTodos() {
+    var ant = document.getElementById('modal-sep-todos');
+    if (ant) ant.remove();
+
+    var mesIdx  = AppState.mesIdx;
+    var mesNome = MESES_NOME[mesIdx] + ' ' + AppState.ano;
+    var admins  = AppData.getFluxoCaixa();
+    var cartoes = AppData.cartoes;
+
+    if (!admins.length)  { alert('Nenhum responsável cadastrado.');  return; }
+    if (!cartoes.length) { alert('Nenhum cartão cadastrado.'); return; }
+
+    var mesNum = String(mesIdx + 1).padStart(2, '0');
+    var mesAno = String(AppState.ano);
+
+    function jaFoiSeparado(cx, respPrimeiroNome) {
+      if (!cx) return false;
+      var nome = respPrimeiroNome.toLowerCase();
+      return (cx.lancamentos || []).some(function (l) {
+        if (l.tipo !== 'entrada' || !l.data) return false;
+        var p = l.data.split('/');
+        return p[1] === mesNum && p[2] === mesAno &&
+               l.desc.toLowerCase().indexOf(nome) !== -1;
+      });
+    }
+
+    // Monta apenas combinações com valor > 0 e que ainda não foram separadas
+    var entradas = [];
+    admins.forEach(function (resp) {
+      cartoes.forEach(function (cartao) {
+        var v = getDespCartaoRespValor(mesIdx, resp.id, cartao.id);
+        if (v <= 0) return;
+        var respNome = resp.nome.split(' ')[0];
+        // Busca caixinha existente pelo nome do cartão (case-insensitive)
+        var cx = AppData.caixinhas.find(function (c) {
+          return c.nome.toLowerCase() === cartao.nome.toLowerCase();
+        });
+        // Pula se já foi separado este mês
+        if (jaFoiSeparado(cx, respNome)) return;
+        entradas.push({
+          respNome:   respNome,
+          cartaoNome: cartao.nome,
+          valor:      v,
+          cxId:       cx ? cx.id        : null,
+          cxNome:     cx ? cx.nome       : cartao.nome,
+          cxSaldo:    cx ? getSaldo(cx)  : null,
+          isNova:     !cx,
+          desc:       'Fatura ' + cartao.nome + ' · ' + respNome,
+        });
+      });
+    });
+
+    if (!entradas.length) {
+      alert('Nenhum gasto encontrado na DRE para ' + mesNome + '.');
+      return;
+    }
+
+    var linhasHTML = entradas.map(function (e, i) {
+      var cxBadge = e.isNova
+        ? '<span style="font-size:11px;background:#eff6ff;color:#3b82f6;border:1px solid #bfdbfe;border-radius:12px;padding:2px 8px;font-weight:600">+ Nova: ' + e.cxNome + '</span>'
+        : '<span style="font-size:11px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:12px;padding:2px 8px;font-weight:600" title="Saldo atual da caixinha">Existente: ' + e.cxNome + ' · ' + fmtR(e.cxSaldo) + '</span>';
+      return '<tr>' +
+        '<td style="padding:10px 8px 10px 12px"><input type="checkbox" class="sf-todos-chk" data-idx="' + i + '" checked style="width:15px;height:15px;accent-color:var(--color-primary)"></td>' +
+        '<td style="font-size:13px;padding:10px 8px">' + e.respNome + '</td>' +
+        '<td style="font-size:13px;font-weight:600;padding:10px 8px">' + e.cartaoNome + '</td>' +
+        '<td style="font-size:13px;font-weight:700;color:#15803d;padding:10px 8px">' + fmtR(e.valor) + '</td>' +
+        '<td style="padding:10px 8px">' + cxBadge + '</td>' +
+      '</tr>';
+    }).join('');
+
+    var m = document.createElement('div');
+    m.className = 'modal-overlay';
+    m.id = 'modal-sep-todos';
+    m.innerHTML =
+      '<div class="modal modal-wide">' +
+        '<div class="modal-header">' +
+          '<h3><i class="ph ph-stack" style="margin-right:6px"></i>Separar Todas as Faturas</h3>' +
+          '<button class="modal-close" id="btn-st-fechar">&times;</button>' +
+        '</div>' +
+        '<div class="modal-body">' +
+          '<div style="display:inline-flex;align-items:center;gap:6px;background:#eff6ff;color:#3b82f6;' +
+               'border:1px solid #bfdbfe;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;margin-bottom:14px">' +
+            '<i class="ph ph-calendar"></i>&nbsp;' + mesNome +
+          '</div>' +
+          '<p style="font-size:13px;color:var(--color-muted);margin:0 0 12px">' +
+            'Valores calculados da DRE. Caixinhas com o mesmo nome do cartão serão reaproveitadas automaticamente.' +
+          '</p>' +
+          '<table class="data-table">' +
+            '<thead><tr>' +
+              '<th style="width:36px"><input type="checkbox" id="sf-st-sel-all" checked style="width:15px;height:15px;accent-color:var(--color-primary)"></th>' +
+              '<th>Responsável</th><th>Cartão</th><th>Valor DRE</th><th>Caixinha destino</th>' +
+            '</tr></thead>' +
+            '<tbody id="sf-st-body">' + linhasHTML + '</tbody>' +
+          '</table>' +
+        '</div>' +
+        '<div class="modal-footer" style="flex-direction:column;align-items:stretch;gap:12px">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;' +
+               'background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 16px">' +
+            '<span style="font-size:13px;color:#15803d;font-weight:600"><i class="ph ph-sigma" style="margin-right:4px"></i>Total selecionado</span>' +
+            '<span id="sf-st-total" style="font-size:18px;font-weight:800;color:#15803d">' + fmtR(entradas.reduce(function(s,e){return s+e.valor;},0)) + '</span>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+            '<button class="btn btn-outline" id="btn-st-cancelar">Cancelar</button>' +
+            '<button class="btn btn-primary" id="btn-st-criar">' +
+              '<i class="ph ph-stack" style="margin-right:5px"></i>Criar <span id="sf-st-count">' + entradas.length + '</span> lançamento(s)' +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(m);
+    m.classList.add('open');
+
+    function atualizarContagem() {
+      var total = 0;
+      document.querySelectorAll('.sf-todos-chk:checked').forEach(function (cb) {
+        total += entradas[parseInt(cb.dataset.idx)].valor;
+      });
+      document.getElementById('sf-st-count').textContent = document.querySelectorAll('.sf-todos-chk:checked').length;
+      document.getElementById('sf-st-total').textContent = fmtR(total);
+    }
+
+    document.getElementById('sf-st-sel-all').addEventListener('change', function () {
+      document.querySelectorAll('.sf-todos-chk').forEach(function (cb) { cb.checked = this.checked; }, this);
+      atualizarContagem();
+    });
+    document.getElementById('sf-st-body').addEventListener('change', function (e) {
+      if (!e.target.classList.contains('sf-todos-chk')) return;
+      var all  = document.querySelectorAll('.sf-todos-chk');
+      var chkd = document.querySelectorAll('.sf-todos-chk:checked');
+      document.getElementById('sf-st-sel-all').checked = all.length > 0 && all.length === chkd.length;
+      atualizarContagem();
+    });
+
+    function fechar() { m.classList.remove('open'); setTimeout(function () { m.remove(); }, 300); }
+    document.getElementById('btn-st-fechar').onclick   = fechar;
+    document.getElementById('btn-st-cancelar').onclick = fechar;
+    m.addEventListener('click', function (e) { if (e.target === m) fechar(); });
+
+    document.getElementById('btn-st-criar').onclick = async function () {
+      var selecionados = Array.from(document.querySelectorAll('.sf-todos-chk:checked'))
+        .map(function (cb) { return entradas[parseInt(cb.dataset.idx)]; });
+      if (!selecionados.length) { alert('Selecione ao menos uma fatura.'); return; }
+
+      var btn = document.getElementById('btn-st-criar');
+      btn.disabled    = true;
+      btn.textContent = 'Criando...';
+
+      var hoje_ = hoje();
+      var cxCriadas = {};  // nome → id, para reaproveitar caixinhas novas criadas nesta operação
+
+      try {
+        for (var i = 0; i < selecionados.length; i++) {
+          var e = selecionados[i];
+          var caixinhaId = e.cxId;
+
+          if (!caixinhaId) {
+            if (cxCriadas[e.cartaoNome] !== undefined) {
+              caixinhaId = cxCriadas[e.cartaoNome];
+            } else {
+              var novaCx = await AppData.addCaixinha({ nome: e.cartaoNome, cor: CORES[i % CORES.length], meta: 0, responsavelId: null });
+              caixinhaId = novaCx.id;
+              cxCriadas[e.cartaoNome] = caixinhaId;
+            }
+          }
+
+          await AppData.addLancCaixinha(caixinhaId, { tipo: 'entrada', desc: e.desc, valor: e.valor, data: hoje_ });
+        }
+        fechar();
+        renderMain(true);
+      } catch (err) {
+        console.error('[sep-todos] erro:', err);
+        alert('Erro ao criar: ' + (err.message || JSON.stringify(err)));
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="ph ph-stack" style="margin-right:5px"></i>Criar <span id="sf-st-count">' + selecionados.length + '</span> lançamento(s)';
+      }
+    };
+  }
+
   // ── HTML builders ──
 
   function buildCardHTML(c) {
@@ -515,6 +899,8 @@ Router.register('caixinhas', function (container) {
         '<h2>Caixinhas</h2>' +
         '<div style="display:flex;gap:8px;align-items:center">' +
           btnOcultasHTML +
+          '<button class="btn btn-outline" id="btn-sep-fatura" style="color:var(--color-primary);border-color:var(--color-primary);font-size:13px;display:flex;align-items:center;gap:5px"><i class="ph ph-piggy-bank"></i>Separar Fatura</button>' +
+          '<button class="btn btn-outline" id="btn-sep-todos" style="color:var(--color-primary);border-color:var(--color-primary);font-size:13px;display:flex;align-items:center;gap:5px"><i class="ph ph-stack"></i>Todos</button>' +
           '<button class="btn btn-primary" id="btn-nova-cx">+ Nova Caixinha</button>' +
         '</div>' +
       '</div>' +
@@ -677,6 +1063,8 @@ Router.register('caixinhas', function (container) {
   // ── Bind ──
   function bindMain() {
     document.getElementById('btn-nova-cx').addEventListener('click', abrirModalCaixinha);
+    document.getElementById('btn-sep-fatura').addEventListener('click', abrirModalSepararFatura);
+    document.getElementById('btn-sep-todos').addEventListener('click', abrirModalSepararTodos);
 
     var btnOcultas = document.getElementById('btn-ver-ocultas');
     if (btnOcultas) btnOcultas.addEventListener('click', abrirModalOcultas);

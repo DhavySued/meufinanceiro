@@ -2,7 +2,18 @@
   "permissions": {
     "allow": [
       "Bash(ls:*)",
-      "Bash(find 'C:\\\\Users\\\\dhavy\\\\Desktop\\\\PROJETOS CLAUDE\\\\PRIMEIRO TESTE' -type f -name *)"
+      "Bash(find 'C:\\\\Users\\\\dhavy\\\\Desktop\\\\PROJETOS CLAUDE\\\\PRIMEIRO TESTE' -type f -name *)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(node server.js)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git *)",
+      "Bash(node *)",
+      "Skill(run)",
+      "Bash(npx --yes serve . --listen 5500)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5500/)"
     ]
   }
 }

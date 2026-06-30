@@ -1415,12 +1415,12 @@ button { cursor: pointer; border: none; background: none; }
   background: #fafafa;
 }
 
-/* Tabela zebrada — usada no dashboard */
-.data-table.zebra tbody tr:nth-child(even) td {
-  background: var(--color-primary-light);
+/* Tabela zebrada */
+.data-table tbody tr:nth-child(even) td {
+  background: #f9fafb;
 }
-.data-table.zebra tbody tr:nth-child(even):hover td {
-  background: #e9d5ff;
+.data-table tbody tr:nth-child(even):hover td {
+  background: #f3f4f6;
 }
 
 .badge {
@@ -1756,8 +1756,11 @@ button { cursor: pointer; border: none; background: none; }
 
 /* Linha conciliada */
 .tr-conciliado {
-  background: rgba(16, 185, 129, 0.04) !important;
+  background: rgba(16, 185, 129, 0.04);
   transition: background 0.2s;
+}
+.tr-conciliado:nth-child(even) td {
+  background: rgba(16, 185, 129, 0.07);
 }
 
 .tr-conciliado td {
@@ -2526,7 +2529,9 @@ button { cursor: pointer; border: none; background: none; }
 .dre-row td { border-bottom: 1px solid #f1f5f9; }
 .dre-row:last-child td { border-bottom: none; }
 
+.dre-row:nth-child(even) td { background: #f9fafb; }
 .dre-row:hover { background: #fafbff; }
+.dre-row:nth-child(even):hover td { background: #f3f4f6; }
 
 .dre-td {
   padding: 9px 16px;

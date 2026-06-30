@@ -325,6 +325,58 @@ Router.register('dashboard', function (container) {
     return items;
   }
 
+  // ── Adiantamentos ──
+  function calcSummaryAdiantamento(mesIdx, effRespId, cartaoId) {
+    var mesNum  = String(mesIdx + 1).padStart(2, '0');
+    var respInt = effRespId !== 'geral' ? parseInt(effRespId) : null;
+    var cFiltro = cartaoId
+      ? AppData.cartoes.filter(function (c) { return c.id === parseInt(cartaoId); })
+      : AppData.cartoes;
+    var total = 0;
+    cFiltro.forEach(function (c) {
+      AppData.getLancamentos()
+        .filter(function (l) {
+          if (l.cartaoId !== c.id) return false;
+          if (l.tipo !== 'receita') return false;
+          if (l.data.split('/')[1] !== mesNum) return false;
+          if (respInt !== null) {
+            if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respInt; });
+            return l.responsavelId === respInt;
+          }
+          return true;
+        })
+        .forEach(function (l) { total += Math.abs(l.valor); });
+    });
+    return total;
+  }
+
+  function getDrillAdiantamentos(mesIdx, effRespId, cartaoId) {
+    var mesNum  = String(mesIdx + 1).padStart(2, '0');
+    var respInt = effRespId !== 'geral' ? parseInt(effRespId) : null;
+    var cFiltro = cartaoId
+      ? AppData.cartoes.filter(function (c) { return c.id === parseInt(cartaoId); })
+      : AppData.cartoes;
+    var items = [];
+    cFiltro.forEach(function (c) {
+      AppData.getLancamentos()
+        .filter(function (l) {
+          if (l.cartaoId !== c.id) return false;
+          if (l.tipo !== 'receita') return false;
+          if (l.data.split('/')[1] !== mesNum) return false;
+          if (respInt !== null) {
+            if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respInt; });
+            return l.responsavelId === respInt;
+          }
+          return true;
+        })
+        .forEach(function (l) {
+          items.push({ data: l.data, desc: l.desc, valor: Math.abs(l.valor), tipo: 'receita', cat: l.cat || '—', cartao: c.nome });
+        });
+    });
+    items.sort(function (a, b) { return a.data < b.data ? 1 : a.data > b.data ? -1 : 0; });
+    return items;
+  }
+
   // ── Modal de drill-down (glassmorphism) ──
   function openDrillModal(tipo, items, titulo) {
     var isReceita = tipo === 'receita';
@@ -405,9 +457,27 @@ Router.register('dashboard', function (container) {
 
   // ── Gasto real por cartão no mês (respeita todos os filtros) ──
   function getGastoPorCartao(mesIdx, respId, cat, visao, cartaoId) {
-    // Apenas DRE: cartões não entram no cálculo
     if (visao === 'dre') {
       return AppData.cartoes.map(function (c) { return { cartao: c, total: 0 }; });
+    }
+    if (visao === 'adiantamento') {
+      var mesNum2  = String(mesIdx + 1).padStart(2, '0');
+      var respInt2 = respId !== 'geral' ? parseInt(respId) : null;
+      return AppData.cartoes.map(function (c) {
+        var total = AppData.getLancamentos()
+          .filter(function (l) {
+            if (l.cartaoId !== c.id) return false;
+            if (l.tipo !== 'receita') return false;
+            if (l.data.split('/')[1] !== mesNum2) return false;
+            if (respInt2 !== null) {
+              if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respInt2; });
+              return l.responsavelId === respInt2;
+            }
+            return true;
+          })
+          .reduce(function (s, l) { return s + Math.abs(l.valor); }, 0);
+        return { cartao: c, total: total };
+      });
     }
     var mesNum  = String(mesIdx + 1).padStart(2, '0');
     var respInt = respId !== 'geral' ? parseInt(respId) : null;
@@ -488,7 +558,12 @@ Router.register('dashboard', function (container) {
 
     // Calcula dados conforme visão ativa
     var dados;
-    if (!isMulti) {
+    if (visao === 'adiantamento') {
+      var totAdiant = 0;
+      var ids = isMulti ? respIds.map(String) : [effRespId];
+      ids.forEach(function (id) { totAdiant += calcSummaryAdiantamento(AppState.mesIdx, id, cartaoId); });
+      dados = { receita: totAdiant, despesa: 0 };
+    } else if (!isMulti) {
       dados = visao === 'cartao'
         ? calcSummaryCartao(AppState.mesIdx, effRespId, cartaoId, cat)
         : visao === 'dre'
@@ -515,6 +590,15 @@ Router.register('dashboard', function (container) {
     } else {
       if (visao === 'dre') {
         gastosCartao = AppData.cartoes.map(function (c) { return { cartao: c, total: 0 }; });
+      } else if (visao === 'adiantamento') {
+        gastosCartao = AppData.cartoes.map(function (c) {
+          var total = respIds.reduce(function (s, id) {
+            var g = getGastoPorCartao(AppState.mesIdx, String(id), cat, 'adiantamento', cartaoId)
+                      .find(function (x) { return x.cartao.id === c.id; });
+            return s + (g ? g.total : 0);
+          }, 0);
+          return { cartao: c, total: total };
+        });
       } else {
         var cartoesFiltroMulti = (visao === 'cartao' && cartaoId)
           ? AppData.cartoes.filter(function (c) { return c.id === parseInt(cartaoId); })
@@ -669,18 +753,26 @@ Router.register('dashboard', function (container) {
           '<button class="dash-visao-pill' + (visao === 'dre' ? ' active' : '') + '" data-visao="dre">' +
             '<i class="ph ph-chart-bar"></i> Apenas DRE' +
           '</button>' +
+          '<button class="dash-visao-pill' + (visao === 'adiantamento' ? ' active' : '') + '" data-visao="adiantamento">' +
+            '<i class="ph ph-arrow-circle-up"></i> Adiantamentos' +
+          '</button>' +
         '</div>' +
         (visao === 'cartao'
           ? '<select id="dash-cartao-sel" class="dash-filtro-sel">' + cartaoOpts + '</select>'
           : '') +
       '</div>' +
 
-      // ── 3 cards ──
-      '<div class="summary-grid">' +
-        buildCard('ph-scales',           'Saldo · ' + mesNome, saldo, saldo >= 0 ? 'income' : 'expense', saldo >= 0 ? 'dash-card-income' : 'dash-card-expense') +
-        buildCard('ph-arrow-circle-up',  'Contas a Receber · ' + mesNome, dados.receita, 'income',  'dash-card-income',  'receita') +
-        buildCard('ph-arrow-circle-down', 'Contas a Pagar · ' + mesNome + (visao === 'cartao' ? ' (Cartão)' : visao === 'dre' ? ' (DRE)' : ''), dados.despesa, 'expense', 'dash-card-expense', 'despesa') +
-      '</div>' +
+      // ── Cards ──
+      (visao === 'adiantamento'
+        ? '<div class="summary-grid" style="grid-template-columns:1fr">' +
+            buildCard('ph-arrow-circle-up', 'Total Adiantado · ' + mesNome, dados.receita, 'income', 'dash-card-income', 'adiantamento') +
+          '</div>'
+        : '<div class="summary-grid">' +
+            buildCard('ph-scales',           'Saldo · ' + mesNome, saldo, saldo >= 0 ? 'income' : 'expense', saldo >= 0 ? 'dash-card-income' : 'dash-card-expense') +
+            buildCard('ph-arrow-circle-up',  'Contas a Receber · ' + mesNome, dados.receita, 'income',  'dash-card-income',  'receita') +
+            buildCard('ph-arrow-circle-down', 'Contas a Pagar · ' + mesNome + (visao === 'cartao' ? ' (Cartão)' : visao === 'dre' ? ' (DRE)' : ''), dados.despesa, 'expense', 'dash-card-expense', 'despesa') +
+          '</div>'
+      ) +
 
       // ── Resumo de Cartões + Por Categoria ──
       '<div class="dash-mid-grid">' +
@@ -781,7 +873,12 @@ Router.register('dashboard', function (container) {
       if (!card) return;
       var tipo  = card.dataset.drill;
       var items;
-      if (tipo === 'receita') {
+      if (tipo === 'adiantamento') {
+        items = isMulti
+          ? respIds.reduce(function (acc, id) { return acc.concat(getDrillAdiantamentos(AppState.mesIdx, String(id), cartaoId)); }, [])
+          : getDrillAdiantamentos(AppState.mesIdx, effRespId, cartaoId);
+        items.sort(function (a, b) { return a.data < b.data ? 1 : a.data > b.data ? -1 : 0; });
+      } else if (tipo === 'receita') {
         items = getDrillReceitas(AppState.mesIdx, effRespId || 'geral');
       } else if (_dashVisao === 'cartao') {
         items = isMulti
@@ -802,9 +899,12 @@ Router.register('dashboard', function (container) {
         : '';
       var sufixo = _dashVisao === 'cartao'
         ? ' · Cartão' + (cartaoNome ? ' ' + cartaoNome : '')
-        : _dashVisao === 'dre' ? ' · DRE' : '';
+        : _dashVisao === 'dre' ? ' · DRE'
+        : _dashVisao === 'adiantamento' ? '' : '';
       var catSufixo = (cat && cat.length > 0) ? ' · ' + (cat.length === 1 ? cat[0] : cat.length + ' cats') : '';
-      var titulo = (tipo === 'receita' ? 'Contas a Receber' : 'Contas a Pagar') + ' · ' + mesNome + sufixo + catSufixo;
+      var titulo = tipo === 'adiantamento'
+        ? 'Adiantamentos · ' + mesNome + (cartaoNome ? ' · ' + cartaoNome : '')
+        : (tipo === 'receita' ? 'Contas a Receber' : 'Contas a Pagar') + ' · ' + mesNome + sufixo + catSufixo;
       openDrillModal(tipo, items, titulo);
     });
 
