@@ -435,6 +435,18 @@ var AppData = (function () {
       c.lancamentos = lista;
     },
 
+    updateLancCaixinha: async function (caixinhaId, lancId, changes) {
+      var c = caixinhas.find(function (x) { return x.id === caixinhaId; });
+      if (!c) return;
+      var lista = (c.lancamentos || []).map(function (l) {
+        return l.id === lancId ? Object.assign({}, l, changes) : l;
+      });
+      var { data, error } = await db.from('caixinhas').update({ lancamentos: lista }).eq('id', caixinhaId).select().single();
+      if (error) throw error;
+      var idx = caixinhas.findIndex(function (x) { return x.id === caixinhaId; });
+      if (idx !== -1) caixinhas[idx] = data;
+    },
+
     // ── Despesas manuais (Supabase) ──────────────────────────
     addDespesaManual: async function (d) {
       var payload = {

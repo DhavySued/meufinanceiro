@@ -269,6 +269,69 @@ Router.register('caixinhas', function (container) {
     };
   }
 
+  // ── Modal: Editar Lançamento ──
+  function abrirModalEditarLanc(l) {
+    var ant = document.getElementById('modal-cx-lanc-edit');
+    if (ant) ant.remove();
+
+    var m = document.createElement('div');
+    m.className = 'modal-overlay';
+    m.id = 'modal-cx-lanc-edit';
+    m.innerHTML =
+      '<div class="modal">' +
+        '<div class="modal-header">' +
+          '<h3>Editar Lançamento</h3>' +
+          '<button class="modal-close" id="btn-fechar-lanc-edit">&times;</button>' +
+        '</div>' +
+        '<div class="modal-body">' +
+          '<div class="form-group">' +
+            '<label>Tipo</label>' +
+            '<select id="cx-lanc-edit-tipo">' +
+              '<option value="entrada"' + (l.tipo === 'entrada' ? ' selected' : '') + '>↑ Entrada (depósito)</option>' +
+              '<option value="saida"'   + (l.tipo === 'saida'   ? ' selected' : '') + '>↓ Saída (retirada)</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>Descrição</label>' +
+            '<input type="text" id="cx-lanc-edit-desc" value="' + l.desc.replace(/"/g, '&quot;') + '" />' +
+          '</div>' +
+          '<div class="form-row">' +
+            '<div class="form-group">' +
+              '<label>Valor (R$)</label>' +
+              '<input type="number" id="cx-lanc-edit-valor" value="' + l.valor + '" min="0.01" step="0.01" />' +
+            '</div>' +
+            '<div class="form-group">' +
+              '<label>Data</label>' +
+              '<input type="text" id="cx-lanc-edit-data" maxlength="10" value="' + l.data + '" />' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="modal-footer">' +
+          '<button class="btn btn-outline" id="btn-cancelar-lanc-edit">Cancelar</button>' +
+          '<button class="btn btn-primary" id="btn-salvar-lanc-edit">Salvar</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(m);
+    m.classList.add('open');
+
+    function fechar() { m.classList.remove('open'); setTimeout(function () { m.remove(); }, 300); }
+    document.getElementById('btn-fechar-lanc-edit').onclick   = fechar;
+    document.getElementById('btn-cancelar-lanc-edit').onclick = fechar;
+    m.addEventListener('click', function (e) { if (e.target === m) fechar(); });
+
+    document.getElementById('btn-salvar-lanc-edit').onclick = async function () {
+      var tipo  = document.getElementById('cx-lanc-edit-tipo').value;
+      var desc  = document.getElementById('cx-lanc-edit-desc').value.trim();
+      var valor = parseFloat(document.getElementById('cx-lanc-edit-valor').value);
+      var data  = document.getElementById('cx-lanc-edit-data').value.trim() || hoje();
+      if (!desc || isNaN(valor) || valor <= 0) { alert('Preencha a descrição e o valor.'); return; }
+      await AppData.updateLancCaixinha(caixinhaAtiva.id, l.id, { tipo: tipo, desc: desc, valor: valor, data: data });
+      fechar();
+      var freshC = AppData.caixinhas.find(function (x) { return x.id === caixinhaAtiva.id; });
+      if (freshC) { caixinhaAtiva = freshC; renderDetalhe(freshC, false); }
+    };
+  }
+
   // ── Modal: Transferência entre caixinhas ──
   function abrirModalTransferencia(origem) {
     var ant = document.getElementById('modal-cx-transf');
@@ -980,7 +1043,10 @@ Router.register('caixinhas', function (container) {
             '<td><strong>' + l.desc + '</strong>' + subDesc + '</td>' +
             '<td>' + badgeHTML + '</td>' +
             '<td class="' + (ent ? 'amount-income' : 'amount-expense') + '">' + (ent ? '+' : '-') + fmtR(l.valor) + '</td>' +
-            '<td><button class="btn-del-lanc-cx" data-id="' + l.id + '" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:18px;line-height:1" title="Remover">×</button></td>' +
+            '<td style="white-space:nowrap">' +
+              '<button class="btn-edit-lanc-cx" data-id="' + l.id + '" style="background:none;border:none;color:#3b82f6;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:15px;line-height:1" title="Editar"><i class="ph ph-pencil"></i></button>' +
+              '<button class="btn-del-lanc-cx" data-id="' + l.id + '" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:18px;line-height:1" title="Remover">×</button>' +
+            '</td>' +
           '</tr>';
         }).join('')
       : '<tr><td colspan="5" style="text-align:center;color:var(--color-muted);padding:36px 22px">' + emptyMsg + '</td></tr>';
@@ -1122,10 +1188,17 @@ Router.register('caixinhas', function (container) {
     var tbody = document.querySelector('#cx-view tbody');
     if (tbody) {
       tbody.addEventListener('click', async function (e) {
-        var btn = e.target.closest('.btn-del-lanc-cx');
-        if (!btn) return;
+        var btnEdit = e.target.closest('.btn-edit-lanc-cx');
+        if (btnEdit) {
+          var lancId = parseInt(btnEdit.dataset.id);
+          var lanc = (c.lancamentos || []).find(function (x) { return x.id === lancId; });
+          if (lanc) abrirModalEditarLanc(lanc);
+          return;
+        }
+        var btnDel = e.target.closest('.btn-del-lanc-cx');
+        if (!btnDel) return;
         if (!confirm('Remover este lançamento?')) return;
-        await AppData.removeLancCaixinha(c.id, parseInt(btn.dataset.id));
+        await AppData.removeLancCaixinha(c.id, parseInt(btnDel.dataset.id));
         var freshC = AppData.caixinhas.find(function (x) { return x.id === c.id; });
         if (freshC) { caixinhaAtiva = freshC; renderDetalhe(freshC, false); }
       });
