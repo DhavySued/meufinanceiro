@@ -645,6 +645,7 @@ Router.register('cartoes', function (container) {
           'background:#f3f4f6;color:#9ca3af;border-radius:8px;font-size:13px;font-weight:600;cursor:not-allowed">' +
           '<i class="ph-bold ph-lock-simple"></i>Encerrado</span>'
         : '<button class="btn btn-primary" id="btn-novo-lanc-cartao">+ Novo Lançamento</button>' +
+          '<button class="btn btn-outline" id="btn-lote-cartao" style="color:var(--color-primary);border-color:var(--color-primary)">+ Lançamento em Lote</button>' +
           '<button class="btn btn-outline" id="btn-adiant-cartao" style="color:#16a34a;border-color:#16a34a">+ Adiantamento</button>';
 
       container.innerHTML =
@@ -755,6 +756,7 @@ Router.register('cartoes', function (container) {
       });
       if (!AppData.isEncerrado(getMesRefFiltro())) {
         document.getElementById('btn-novo-lanc-cartao').addEventListener('click', abrirNovo);
+        document.getElementById('btn-lote-cartao').addEventListener('click', abrirLote);
         document.getElementById('btn-adiant-cartao').addEventListener('click', abrirAdiantamento);
       }
       // ── Sort: clique nos cabeçalhos (exceto no ícone de filtro) ──
@@ -1446,6 +1448,250 @@ Router.register('cartoes', function (container) {
       } catch (err) {
         console.error('Erro ao salvar adiantamento:', err);
         alert('Erro ao salvar: ' + (err.message || JSON.stringify(err)));
+      }
+    });
+
+    // ── Modal de Lançamento em Lote ──────────────────────────────
+    var antModalLote = document.getElementById('modal-lote-cartao');
+    if (antModalLote) antModalLote.remove();
+
+    var LOTE_INPUT_STYLE = 'width:100%;border:1.5px solid var(--color-border);border-radius:6px;' +
+                            'padding:6px 8px;font-size:13px;background:var(--color-surface);box-sizing:border-box';
+
+    function optsCatLote(sel) {
+      return '<option value="">— Selecione —</option>' +
+        AppData.categorias.map(function (cat) {
+          return '<option value="' + cat.nome + '"' + (cat.nome === sel ? ' selected' : '') + '>' + cat.nome + '</option>';
+        }).join('');
+    }
+
+    function optsRespLote(sel) {
+      return '<option value="">— Sem responsável —</option>' +
+        AppData.responsaveis.map(function (r) {
+          return '<option value="' + r.id + '"' + (String(r.id) === String(sel) ? ' selected' : '') + '>' + r.nome + '</option>';
+        }).join('');
+    }
+
+    var modalLote = document.createElement('div');
+    modalLote.className = 'modal-overlay';
+    modalLote.id = 'modal-lote-cartao';
+    modalLote.innerHTML =
+      '<div class="modal modal-wide" style="max-width:960px">' +
+        '<div class="modal-header">' +
+          '<h3>Lançamento em Lote · ' + c.nome + '</h3>' +
+          '<button class="modal-close" id="btn-fechar-lote">&times;</button>' +
+        '</div>' +
+        '<div class="modal-body">' +
+          '<div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;background:#f8fafc;border:1px solid var(--color-border);border-radius:10px;padding:14px">' +
+            '<div class="form-group" style="min-width:150px;margin-bottom:0">' +
+              '<label>Data padrão</label><input type="date" id="lote-data-padrao">' +
+            '</div>' +
+            '<div class="form-group" style="min-width:170px;margin-bottom:0">' +
+              '<label>Categoria padrão</label><select id="lote-cat-padrao">' + optsCatLote('') + '</select>' +
+            '</div>' +
+            '<div class="form-group" style="min-width:170px;margin-bottom:0">' +
+              '<label>Responsável padrão</label><select id="lote-resp-padrao">' + optsRespLote('') + '</select>' +
+            '</div>' +
+            '<p style="font-size:12px;color:var(--color-muted);margin:0;flex-basis:100%">' +
+              'Os padrões preenchem as novas linhas automaticamente — ajuste cada linha se precisar.' +
+            '</p>' +
+          '</div>' +
+          '<div style="overflow-x:auto;margin-top:16px;border:1px solid var(--color-border);border-radius:10px">' +
+            '<table class="data-table" style="min-width:820px;margin:0">' +
+              '<thead><tr>' +
+                '<th style="min-width:130px">Data</th>' +
+                '<th style="min-width:200px">Descrição</th>' +
+                '<th style="min-width:150px">Categoria</th>' +
+                '<th style="min-width:150px">Responsável</th>' +
+                '<th style="min-width:110px">Valor (R$)</th>' +
+                '<th style="width:40px"></th>' +
+              '</tr></thead>' +
+              '<tbody id="lote-tbody"></tbody>' +
+            '</table>' +
+          '</div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">' +
+            '<button type="button" class="btn btn-outline" id="btn-add-linha-lote" style="font-size:13px;padding:6px 14px">' +
+              '<i class="ph-bold ph-plus" style="margin-right:4px"></i>Adicionar linha' +
+            '</button>' +
+            '<span id="lote-resumo" style="font-size:13px;font-weight:600;color:var(--color-muted)"></span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="modal-footer">' +
+          '<button class="btn btn-outline" id="btn-cancelar-lote">Cancelar</button>' +
+          '<button class="btn btn-primary" id="btn-salvar-lote">Salvar Lançamentos</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(modalLote);
+
+    function novaLinhaLote(prefill) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><input type="date" class="lote-data" value="' + (prefill.data || '') + '" style="' + LOTE_INPUT_STYLE + '"></td>' +
+        '<td><input type="text" class="lote-desc" placeholder="Descrição" style="' + LOTE_INPUT_STYLE + '"></td>' +
+        '<td><select class="lote-cat" style="' + LOTE_INPUT_STYLE + '">' + optsCatLote(prefill.cat || '') + '</select></td>' +
+        '<td><select class="lote-resp" style="' + LOTE_INPUT_STYLE + '">' + optsRespLote(prefill.resp || '') + '</select></td>' +
+        '<td><input type="number" class="lote-valor" placeholder="0,00" min="0" step="0.01" style="' + LOTE_INPUT_STYLE + ';max-width:110px"></td>' +
+        '<td style="text-align:center"><button type="button" class="btn-remover-linha-lote" title="Remover linha" ' +
+          'style="background:var(--color-expense-bg);color:var(--color-expense);border:none;border-radius:6px;' +
+          'width:26px;height:26px;font-size:13px;cursor:pointer">&times;</button></td>';
+      document.getElementById('lote-tbody').appendChild(tr);
+      return tr;
+    }
+
+    function prefillAtualLote() {
+      return {
+        data: document.getElementById('lote-data-padrao').value,
+        cat:  document.getElementById('lote-cat-padrao').value,
+        resp: document.getElementById('lote-resp-padrao').value
+      };
+    }
+
+    function atualizarResumoLote() {
+      var linhas = document.querySelectorAll('#lote-tbody tr');
+      var preenchidas = 0, total = 0;
+      linhas.forEach(function (tr) {
+        var desc  = tr.querySelector('.lote-desc').value.trim();
+        var valor = parseFloat(tr.querySelector('.lote-valor').value);
+        if (desc && !isNaN(valor) && valor > 0) { preenchidas++; total += valor; }
+      });
+      document.getElementById('lote-resumo').textContent = preenchidas > 0
+        ? preenchidas + ' lançamento' + (preenchidas !== 1 ? 's' : '') + ' · Total ' + fmtR(total)
+        : '';
+    }
+
+    function abrirLote() {
+      var hoje    = new Date();
+      var hojeISO = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-' + String(hoje.getDate()).padStart(2, '0');
+      document.getElementById('lote-data-padrao').value = hojeISO;
+      document.getElementById('lote-cat-padrao').selectedIndex  = 0;
+      document.getElementById('lote-resp-padrao').selectedIndex = 0;
+      document.getElementById('lote-tbody').innerHTML = '';
+      var prefill = prefillAtualLote();
+      for (var i = 0; i < 6; i++) novaLinhaLote(prefill);
+      atualizarResumoLote();
+      modalLote.classList.add('open');
+      setTimeout(function () {
+        var first = document.querySelector('#lote-tbody .lote-desc');
+        if (first) first.focus();
+      }, 50);
+    }
+
+    function fecharModalLote() { modalLote.classList.remove('open'); }
+
+    document.getElementById('btn-add-linha-lote').addEventListener('click', function () {
+      var tr = novaLinhaLote(prefillAtualLote());
+      atualizarResumoLote();
+      var f = tr.querySelector('.lote-desc');
+      if (f) f.focus();
+    });
+
+    document.getElementById('lote-tbody').addEventListener('input', function (e) {
+      if (e.target.classList.contains('lote-desc') || e.target.classList.contains('lote-valor')) atualizarResumoLote();
+    });
+
+    document.getElementById('lote-tbody').addEventListener('click', function (e) {
+      var rem = e.target.closest('.btn-remover-linha-lote');
+      if (!rem) return;
+      var tr = rem.closest('tr');
+      if (tr) tr.remove();
+      atualizarResumoLote();
+    });
+
+    // Enter navega: Descrição → Valor → (nova linha ou próxima linha)
+    document.getElementById('lote-tbody').addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      var alvo = e.target;
+      if (!alvo.classList.contains('lote-desc') && !alvo.classList.contains('lote-valor')) return;
+      e.preventDefault();
+      var tr = alvo.closest('tr');
+
+      if (alvo.classList.contains('lote-desc')) {
+        var valorInput = tr.querySelector('.lote-valor');
+        if (valorInput) valorInput.focus();
+        return;
+      }
+
+      // alvo é .lote-valor
+      var proximaLinha = tr.nextElementSibling;
+      if (proximaLinha) {
+        var f = proximaLinha.querySelector('.lote-desc');
+        if (f) f.focus();
+      } else {
+        var novaTr = novaLinhaLote(prefillAtualLote());
+        atualizarResumoLote();
+        var f2 = novaTr.querySelector('.lote-desc');
+        if (f2) f2.focus();
+      }
+    });
+
+    document.getElementById('btn-fechar-lote').addEventListener('click', fecharModalLote);
+    document.getElementById('btn-cancelar-lote').addEventListener('click', fecharModalLote);
+    modalLote.addEventListener('click', function (e) { if (e.target === modalLote) fecharModalLote(); });
+
+    document.getElementById('btn-salvar-lote').addEventListener('click', async function () {
+      if (AppData.isEncerrado(getMesRefFiltro())) {
+        alert('Competência ' + getMesRefFiltro() + ' está encerrada. Nenhum lançamento pode ser incluído ou alterado.');
+        return;
+      }
+      var linhas = document.querySelectorAll('#lote-tbody tr');
+      var lote   = [];
+      var erro   = null;
+      var mesRef = getMesRefFiltro();
+
+      for (var i = 0; i < linhas.length; i++) {
+        var tr       = linhas[i];
+        var dataVal  = tr.querySelector('.lote-data').value;
+        var desc     = tr.querySelector('.lote-desc').value.trim();
+        var cat      = tr.querySelector('.lote-cat').value;
+        var respSel  = tr.querySelector('.lote-resp');
+        var valorStr = tr.querySelector('.lote-valor').value;
+        var valor    = parseFloat(valorStr);
+
+        if (!desc && !valorStr && !cat) continue; // linha totalmente vazia — ignora
+
+        if (!dataVal || !desc || !cat || isNaN(valor) || valor <= 0) {
+          erro = 'Linha ' + (i + 1) + ': preencha data, descrição, categoria e valor corretamente.';
+          break;
+        }
+
+        var p        = dataVal.split('-');
+        var dataBR   = p[2] + '/' + p[1] + '/' + p[0];
+        var respId   = respSel.value ? parseInt(respSel.value) : null;
+        var respNome = respId ? respSel.options[respSel.selectedIndex].textContent : null;
+
+        lote.push({
+          data:            dataBR,
+          mes_referencia:  mesRef,
+          desc:            desc,
+          cat:             cat,
+          valor:           -Math.abs(valor),
+          cartaoId:        c.id,
+          cartaoNome:      c.nome,
+          responsavelId:   respId,
+          responsavelNome: respNome,
+          isDividido:      false,
+          conciliado:      false
+        });
+      }
+
+      if (erro) { alert(erro); return; }
+      if (!lote.length) { alert('Preencha ao menos um lançamento.'); return; }
+
+      var btn = this;
+      btn.disabled = true;
+      btn.textContent = 'Salvando...';
+      try {
+        await AppData.addLancamentosLote(lote);
+        fecharModalLote();
+        renderTabela();
+        atualizarFaturaCard();
+        mostrarToast(lote.length + ' lançamento' + (lote.length !== 1 ? 's' : '') + ' salvos com sucesso!');
+      } catch (err) {
+        console.error('Erro ao salvar lote:', err);
+        alert('Erro ao salvar: ' + (err.message || JSON.stringify(err)));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Salvar Lançamentos';
       }
     });
   }
