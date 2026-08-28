@@ -34,6 +34,34 @@ Router.register('caixinhas', function (container) {
            d.getFullYear();
   }
 
+  // ── Datas: o app usa DD/MM/AAAA, o <input type="date"> usa AAAA-MM-DD ──
+  function hojeISO() {
+    var d = new Date();
+    return d.getFullYear() + '-' +
+           String(d.getMonth() + 1).padStart(2,'0') + '-' +
+           String(d.getDate()).padStart(2,'0');
+  }
+  function dmyToISO(dmy) {
+    if (!dmy) return '';
+    if (dmy.indexOf('-') !== -1) return dmy;
+    var p = dmy.split('/');
+    if (p.length !== 3) return '';
+    return p[2] + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0');
+  }
+  function isoToDMY(iso) {
+    if (!iso) return '';
+    if (iso.indexOf('/') !== -1) return iso;
+    var p = iso.split('-');
+    if (p.length !== 3) return '';
+    return String(parseInt(p[2],10)).padStart(2,'0') + '/' +
+           String(parseInt(p[1],10)).padStart(2,'0') + '/' + p[0];
+  }
+  // Lê o valor de um <input type="date"> como DD/MM/AAAA (ou hoje se vazio)
+  function lerData(id) {
+    var el = document.getElementById(id);
+    return (el && isoToDMY(el.value)) || hoje();
+  }
+
   function getSaldo(c) {
     return (c.lancamentos || []).reduce(function (s, l) {
       return s + (l.tipo === 'entrada' ? l.valor : -l.valor);
@@ -239,7 +267,7 @@ Router.register('caixinhas', function (container) {
             '</div>' +
             '<div class="form-group">' +
               '<label>Data</label>' +
-              '<input type="text" id="cx-lanc-data" placeholder="DD/MM/AAAA" maxlength="10" value="' + hoje() + '" />' +
+              '<input type="date" id="cx-lanc-data" value="' + hojeISO() + '" />' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -260,7 +288,7 @@ Router.register('caixinhas', function (container) {
       var tipo  = document.getElementById('cx-lanc-tipo').value;
       var desc  = document.getElementById('cx-lanc-desc').value.trim();
       var valor = parseFloat(document.getElementById('cx-lanc-valor').value);
-      var data  = document.getElementById('cx-lanc-data').value.trim() || hoje();
+      var data  = lerData('cx-lanc-data');
       if (!desc || isNaN(valor) || valor <= 0) { alert('Preencha a descrição e o valor.'); return; }
       await AppData.addLancCaixinha(caixinhaAtiva.id, { tipo: tipo, desc: desc, valor: valor, data: data });
       fechar();
@@ -302,7 +330,7 @@ Router.register('caixinhas', function (container) {
             '</div>' +
             '<div class="form-group">' +
               '<label>Data</label>' +
-              '<input type="text" id="cx-lanc-edit-data" maxlength="10" value="' + l.data + '" />' +
+              '<input type="date" id="cx-lanc-edit-data" value="' + dmyToISO(l.data) + '" />' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -323,7 +351,7 @@ Router.register('caixinhas', function (container) {
       var tipo  = document.getElementById('cx-lanc-edit-tipo').value;
       var desc  = document.getElementById('cx-lanc-edit-desc').value.trim();
       var valor = parseFloat(document.getElementById('cx-lanc-edit-valor').value);
-      var data  = document.getElementById('cx-lanc-edit-data').value.trim() || hoje();
+      var data  = lerData('cx-lanc-edit-data');
       if (!desc || isNaN(valor) || valor <= 0) { alert('Preencha a descrição e o valor.'); return; }
       await AppData.updateLancCaixinha(caixinhaAtiva.id, l.id, { tipo: tipo, desc: desc, valor: valor, data: data });
       fechar();
@@ -376,7 +404,7 @@ Router.register('caixinhas', function (container) {
             '</div>' +
             '<div class="form-group">' +
               '<label>Data</label>' +
-              '<input type="text" id="cx-transf-data" placeholder="DD/MM/AAAA" maxlength="10" value="' + hoje() + '" />' +
+              '<input type="date" id="cx-transf-data" value="' + hojeISO() + '" />' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -397,7 +425,7 @@ Router.register('caixinhas', function (container) {
       var destinoId = parseInt(document.getElementById('cx-transf-destino').value);
       var desc      = document.getElementById('cx-transf-desc').value.trim();
       var valor     = parseFloat(document.getElementById('cx-transf-valor').value);
-      var data      = document.getElementById('cx-transf-data').value.trim() || hoje();
+      var data      = lerData('cx-transf-data');
       if (!desc || isNaN(valor) || valor <= 0) { alert('Preencha a descrição e o valor.'); return; }
       var destino = AppData.caixinhas.find(function (c) { return c.id === destinoId; });
       if (!destino) return;
@@ -578,7 +606,7 @@ Router.register('caixinhas', function (container) {
             '</div>' +
             '<div class="form-group">' +
               '<label>Data</label>' +
-              '<input type="text" id="sf-data" maxlength="10" value="' + hoje() + '" />' +
+              '<input type="date" id="sf-data" value="' + hojeISO() + '" />' +
             '</div>' +
           '</div>' +
           '<div class="form-group">' +
@@ -655,7 +683,7 @@ Router.register('caixinhas', function (container) {
     document.getElementById('btn-sf-salvar').onclick = async function () {
       var valor = parseFloat(document.getElementById('sf-valor').value);
       var desc  = document.getElementById('sf-desc').value.trim();
-      var data  = document.getElementById('sf-data').value.trim() || hoje();
+      var data  = lerData('sf-data');
       var cxSel = document.getElementById('sf-caixinha').value;
 
       if (!desc)                            { alert('Informe a descrição do lançamento.'); return; }
@@ -1043,9 +1071,9 @@ Router.register('caixinhas', function (container) {
             '<td><strong>' + l.desc + '</strong>' + subDesc + '</td>' +
             '<td>' + badgeHTML + '</td>' +
             '<td class="' + (ent ? 'amount-income' : 'amount-expense') + '">' + (ent ? '+' : '-') + fmtR(l.valor) + '</td>' +
-            '<td style="white-space:nowrap">' +
-              '<button class="btn-edit-lanc-cx" data-id="' + l.id + '" style="background:none;border:none;color:#3b82f6;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:15px;line-height:1" title="Editar"><i class="ph ph-pencil"></i></button>' +
-              '<button class="btn-del-lanc-cx" data-id="' + l.id + '" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:18px;line-height:1" title="Remover">×</button>' +
+            '<td style="white-space:nowrap;display:flex;gap:6px">' +
+              '<button class="btn-edit-lanc-cx" data-id="' + l.id + '" style="background:#eff6ff;border:none;color:#3b82f6;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:14px;line-height:1;font-weight:600" title="Editar lançamento"><i class="ph ph-pencil" style="margin-right:4px"></i>Editar</button>' +
+              '<button class="btn-del-lanc-cx" data-id="' + l.id + '" style="background:#fef2f2;border:none;color:#ef4444;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:16px;line-height:1" title="Remover lançamento">×</button>' +
             '</td>' +
           '</tr>';
         }).join('')
