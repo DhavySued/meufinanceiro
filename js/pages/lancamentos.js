@@ -62,7 +62,7 @@ Router.register('lancamentos', function (container) {
 
   function optsResponsaveis() {
     var opts = '<option value="" data-nome="">— Nenhum —</option>';
-    opts += AppData.responsaveis.map(function (r) {
+    opts += AppData.getResponsaveisAtivos().map(function (r) {
       return '<option value="' + r.id + '" data-nome="' + r.nome.replace(/"/g,'&quot;') + '">' + r.nome + '</option>';
     }).join('');
     return opts;
@@ -159,7 +159,7 @@ Router.register('lancamentos', function (container) {
 
     if (col === 'resp') {
       // para responsável: listar todos os cadastrados, não só os que aparecem nos lançamentos
-      AppData.responsaveis.forEach(function (r) {
+      AppData.getResponsaveisAtivos().forEach(function (r) {
         if (r.nome && opts.indexOf(r.nome) === -1) opts.push(r.nome);
       });
     } else {

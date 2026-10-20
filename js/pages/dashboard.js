@@ -85,7 +85,7 @@ Router.register('dashboard', function (container) {
   function calcSummaryDRE(mesIdx, respId, cat) {
     if (respId === 'geral') {
       var receita = 0, despesa = 0;
-      AppData.getFluxoCaixa().forEach(function (r) {
+      AppData.getFluxoCaixa(AppData.mesRefDe(mesIdx)).forEach(function (r) {
         var d = calcDREResp(mesIdx, r, cat);
         receita += d.receita;
         despesa += d.despesa;
@@ -105,7 +105,7 @@ Router.register('dashboard', function (container) {
     // Receitas: mantém ganhos configurados no perfil (DRE-style)
     var receita = 0;
     if (respId === 'geral') {
-      AppData.getFluxoCaixa().forEach(function (r) {
+      AppData.getFluxoCaixa(AppData.mesRefDe(mesIdx)).forEach(function (r) {
         receita += getGanhosDoMes(r, mesIdx).reduce(function (s, g) { return s + g.valor; }, 0);
       });
     } else {
@@ -151,7 +151,7 @@ Router.register('dashboard', function (container) {
     var mesRef = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
 
     var resps  = respId === 'geral'
-      ? AppData.getFluxoCaixa()
+      ? AppData.getFluxoCaixa(AppData.mesRefDe(mesIdx))
       : [AppData.getById(parseInt(respId))].filter(Boolean);
     var receita = 0, despesa = 0;
 
@@ -176,7 +176,7 @@ Router.register('dashboard', function (container) {
   // ── Drill-down Receitas ──
   function getDrillReceitas(mesIdx, respId) {
     var resps = respId === 'geral'
-      ? AppData.getFluxoCaixa()
+      ? AppData.getFluxoCaixa(AppData.mesRefDe(mesIdx))
       : [AppData.getById(parseInt(respId))].filter(Boolean);
     var items = [];
     resps.forEach(function (resp) {
@@ -193,7 +193,7 @@ Router.register('dashboard', function (container) {
 
     var respInt = respId !== 'geral' ? parseInt(respId) : null;
     var resps   = respId === 'geral'
-      ? AppData.getFluxoCaixa()
+      ? AppData.getFluxoCaixa(AppData.mesRefDe(mesIdx))
       : [AppData.getById(respInt)].filter(Boolean);
     var items   = [];
 
@@ -257,7 +257,7 @@ Router.register('dashboard', function (container) {
     var mesRef = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
 
     var resps  = respId === 'geral'
-      ? AppData.getFluxoCaixa()
+      ? AppData.getFluxoCaixa(AppData.mesRefDe(mesIdx))
       : [AppData.getById(parseInt(respId))].filter(Boolean);
     var items  = [];
 
@@ -383,7 +383,10 @@ Router.register('dashboard', function (container) {
     var corTipo   = isReceita ? 'var(--color-income)' : 'var(--color-expense)';
     var iconTipo  = isReceita ? 'ph-arrow-circle-up' : 'ph-arrow-circle-down';
     var bgIcon    = isReceita ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)';
-    var total     = items.reduce(function (s, i) { return s + i.valor; }, 0);
+    // Num popup de despesas, créditos (estornos/adiantamentos) abatem o total — igual ao KPI
+    var total     = items.reduce(function (s, i) {
+      return s + (!isReceita && i.tipo === 'receita' ? -i.valor : i.valor);
+    }, 0);
 
     var rowsHTML = items.length
       ? items.map(function (item) {
@@ -514,7 +517,7 @@ Router.register('dashboard', function (container) {
   // ── Totais anuais ──
   function calcMesAnual(m) {
     var receita = 0, despesa = 0;
-    AppData.getFluxoCaixa().forEach(function (r) {
+    AppData.getFluxoCaixa(AppData.mesRefDe(m)).forEach(function (r) {
       var d = calcDREResp(m, r);
       receita += d.receita;
       despesa += d.despesa;
@@ -545,7 +548,7 @@ Router.register('dashboard', function (container) {
     var anoVal  = AppState.ano;
 
     // Resolve respIds → effRespId para funções legadas
-    var allRespsCount = AppData.responsaveis.length;
+    var allRespsCount = AppData.getResponsaveisAtivos().length;
     var isGeral  = !respIds || respIds.length === 0 || respIds.length >= allRespsCount;
     var isSingle = !isGeral && respIds.length === 1;
     var isMulti  = !isGeral && !isSingle;
@@ -1007,7 +1010,7 @@ Router.register('dashboard', function (container) {
   function setupRespMultiSelect() {
     var btn = document.getElementById('dash-resp-btn');
     if (!btn) return;
-    var resps = AppData.responsaveis;
+    var resps = AppData.getResponsaveisAtivos();
 
     btn.addEventListener('click', function (e) {
       e.stopPropagation();

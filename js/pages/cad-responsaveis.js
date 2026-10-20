@@ -10,6 +10,21 @@ Router.register('cad-responsaveis', function (container) {
       : '<span class="badge" style="background:#f3f4f6;color:var(--color-muted)">Terceiro</span>';
   }
 
+  var MESES_CURTOS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+  function fmtCompetencia(mesRef) {
+    var p = String(mesRef || '').split('-');
+    return p.length >= 2 ? MESES_CURTOS[parseInt(p[1]) - 1] + '/' + p[0] : mesRef;
+  }
+
+  function badgeStatus(r) {
+    if (!r.inativo_desde) return '<span class="badge badge-income">Ativo</span>';
+    var desde = fmtCompetencia(r.inativo_desde);
+    return AppData.isRespAtivoEm(r)
+      ? '<span class="badge" style="background:#fef3c7;color:#b45309" title="Deixa de ser exibido a partir de ' + desde + '">Inativo a partir de ' + desde + '</span>'
+      : '<span class="badge badge-expense" title="Não é exibido a partir de ' + desde + '">Inativo desde ' + desde + '</span>';
+  }
+
   function buildRow(r) {
     var fluxoBadge = r.fluxoCaixa
       ? '<span class="badge badge-income">Sim</span>'
@@ -24,12 +39,15 @@ Router.register('cad-responsaveis', function (container) {
           inicialAvatar(r.nome) +
         '</div><div><strong>' + r.nome + '</strong><br>' + ganhosInfo + '</div>' +
       '</div></td>' +
-      '<td style="color:var(--color-muted)">' + r.email + '</td>' +
-      '<td>' + badgePerfil(r.perfil) + '</td>' +
-      '<td>' + fluxoBadge + '</td>' +
-      '<td><span class="badge badge-income">Ativo</span></td>' +
-      '<td style="display:flex;gap:6px;padding:10px 22px">' +
+      '<td data-label="E-mail" style="color:var(--color-muted)">' + r.email + '</td>' +
+      '<td data-label="Perfil">' + badgePerfil(r.perfil) + '</td>' +
+      '<td data-label="Fluxo de Caixa">' + fluxoBadge + '</td>' +
+      '<td data-label="Status">' + badgeStatus(r) + '</td>' +
+      '<td class="resp-acoes" style="display:flex;gap:6px;padding:10px 22px">' +
         '<button class="btn btn-outline btn-editar-resp" data-id="' + r.id + '" style="font-size:12px;padding:5px 12px">Editar</button>' +
+        (r.inativo_desde
+          ? '<button class="btn btn-outline btn-reativar-resp" data-id="' + r.id + '" style="font-size:12px;padding:5px 12px">Reativar</button>'
+          : '<button class="btn btn-outline btn-desativar-resp" data-id="' + r.id + '" style="font-size:12px;padding:5px 12px">Desativar</button>') +
         '<button class="btn btn-excluir-resp" data-id="' + r.id + '" style="font-size:12px;padding:5px 12px;background:var(--color-expense-bg);color:var(--color-expense);border-radius:8px;font-weight:600">Excluir</button>' +
       '</td>' +
     '</tr>';
@@ -41,7 +59,7 @@ Router.register('cad-responsaveis', function (container) {
       '<button class="btn btn-primary" id="btn-novo-resp">+ Novo Responsável</button>' +
     '</div>' +
     '<div class="section-box">' +
-      '<table class="data-table">' +
+      '<table class="data-table data-table-cards">' +
         '<thead><tr>' +
           '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Fluxo de Caixa</th><th>Status</th><th>Ações</th>' +
         '</tr></thead>' +
@@ -141,6 +159,63 @@ Router.register('cad-responsaveis', function (container) {
       '</div>' +
     '</div>';
   document.body.appendChild(modal);
+
+  // ── Modal: desativar responsável a partir de uma competência ──
+  var modalDesat = document.createElement('div');
+  modalDesat.className = 'modal-overlay';
+  modalDesat.id = 'modal-resp-desativar';
+  modalDesat.innerHTML =
+    '<div class="modal">' +
+      '<div class="modal-header">' +
+        '<h3 id="desat-titulo">Desativar Responsável</h3>' +
+        '<button class="modal-close" id="btn-fechar-desat">&times;</button>' +
+      '</div>' +
+      '<div class="modal-body">' +
+        '<div class="form-group">' +
+          '<label>Deixar de exibir a partir da competência</label>' +
+          '<input type="month" id="desat-competencia" />' +
+        '</div>' +
+        '<p style="font-size:13px;color:var(--color-muted);margin:0">' +
+          'Nas competências anteriores o responsável continua aparecendo normalmente, com todos os lançamentos, ' +
+          'ganhos e despesas preservados. A partir da competência escolhida ele some do dashboard, da DRE e das listas de seleção. ' +
+          'Você pode reativá-lo a qualquer momento.' +
+        '</p>' +
+      '</div>' +
+      '<div class="modal-footer">' +
+        '<button class="btn btn-outline" id="btn-cancelar-desat">Cancelar</button>' +
+        '<button class="btn btn-primary" id="btn-confirmar-desat">Desativar</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modalDesat);
+
+  var desativandoId = null;
+
+  function abrirDesativar(resp) {
+    desativandoId = resp.id;
+    document.getElementById('desat-titulo').textContent = 'Desativar ' + resp.nome;
+    document.getElementById('desat-competencia').value = AppData.mesRefDe();
+    modalDesat.classList.add('open');
+  }
+  function fecharDesativar() { modalDesat.classList.remove('open'); desativandoId = null; }
+
+  document.getElementById('btn-fechar-desat').addEventListener('click', fecharDesativar);
+  document.getElementById('btn-cancelar-desat').addEventListener('click', fecharDesativar);
+  modalDesat.addEventListener('click', function (e) { if (e.target === modalDesat) fecharDesativar(); });
+
+  document.getElementById('btn-confirmar-desat').addEventListener('click', async function () {
+    var mesRef = document.getElementById('desat-competencia').value;
+    if (!/^\d{4}-\d{2}$/.test(mesRef)) { alert('Informe a competência (mês/ano).'); return; }
+    var id = desativandoId;
+    try {
+      var atualizado = await AppData.desativarResponsavel(id, mesRef);
+      var tr = document.querySelector('#tbody-responsaveis tr[data-id="' + id + '"]');
+      if (tr) tr.outerHTML = buildRow(atualizado);
+      fecharDesativar();
+    } catch (err) {
+      console.error('Erro ao desativar responsável:', err);
+      alert('Erro ao desativar responsável. Se for a primeira vez, execute o script supabase/responsaveis_inativo_desde.sql no Supabase.');
+    }
+  });
 
   // ── Listas em memória ──
   var ganhosList      = [];
@@ -332,6 +407,25 @@ Router.register('cad-responsaveis', function (container) {
   document.getElementById('tbody-responsaveis').addEventListener('click', async function (e) {
     var btnEditar  = e.target.closest('.btn-editar-resp');
     var btnExcluir = e.target.closest('.btn-excluir-resp');
+    var btnDesat   = e.target.closest('.btn-desativar-resp');
+    var btnReat    = e.target.closest('.btn-reativar-resp');
+    if (btnDesat) {
+      var resp = AppData.getById(parseInt(btnDesat.dataset.id));
+      if (resp) abrirDesativar(resp);
+    }
+    if (btnReat) {
+      var resp = AppData.getById(parseInt(btnReat.dataset.id));
+      if (!resp) return;
+      if (!confirm('Reativar "' + resp.nome + '"? Ele voltará a aparecer em todas as competências.')) return;
+      try {
+        var atualizado = await AppData.reativarResponsavel(resp.id);
+        var tr = document.querySelector('#tbody-responsaveis tr[data-id="' + resp.id + '"]');
+        if (tr) tr.outerHTML = buildRow(atualizado);
+      } catch (err) {
+        console.error('Erro ao reativar responsável:', err);
+        alert('Erro ao reativar responsável. Verifique o console (F12) para detalhes.');
+      }
+    }
     if (btnEditar) {
       var id = parseInt(btnEditar.dataset.id);
       var resp = AppData.responsaveis.find(function (r) { return r.id === id; });
@@ -341,7 +435,7 @@ Router.register('cad-responsaveis', function (container) {
       var id = parseInt(btnExcluir.dataset.id);
       var resp = AppData.responsaveis.find(function (r) { return r.id === id; });
       if (!resp) return;
-      if (!confirm('Excluir o responsável "' + resp.nome + '"?\nEsta ação não pode ser desfeita.')) return;
+      if (!confirm('Excluir o responsável "' + resp.nome + '"?\nEsta ação não pode ser desfeita.\n\nDica: para parar de exibi-lo sem perder o histórico, use "Desativar".')) return;
       await AppData.removeResponsavel(id);
       var tr = document.querySelector('#tbody-responsaveis tr[data-id="' + id + '"]');
       if (tr) tr.remove();

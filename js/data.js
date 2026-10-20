@@ -312,8 +312,37 @@ var AppData = (function () {
     },
 
     // ── Responsáveis ────────────────────────────────────────
-    getFluxoCaixa: function () {
-      return responsaveis.filter(function (r) { return r.perfil === 'Administrador'; });
+    // Competência YYYY-MM a partir de mesIdx (0-11) e ano; sem argumentos usa a competência global
+    mesRefDe: function (mesIdx, ano) {
+      if (mesIdx === undefined || mesIdx === null) mesIdx = AppState.mesIdx;
+      if (!ano) ano = AppState.ano;
+      return ano + '-' + String(mesIdx + 1).padStart(2, '0');
+    },
+
+    // Um responsável desativado continua existindo (histórico preservado), mas deixa de
+    // ser exibido a partir da competência inativo_desde (inclusive).
+    isRespAtivoEm: function (r, mesRef) {
+      if (!r) return false;
+      if (!r.inativo_desde) return true;
+      return (mesRef || api.mesRefDe()) < String(r.inativo_desde).slice(0, 7);
+    },
+
+    getResponsaveisAtivos: function (mesRef) {
+      return responsaveis.filter(function (r) { return api.isRespAtivoEm(r, mesRef); });
+    },
+
+    getFluxoCaixa: function (mesRef) {
+      return responsaveis.filter(function (r) {
+        return r.perfil === 'Administrador' && api.isRespAtivoEm(r, mesRef);
+      });
+    },
+
+    desativarResponsavel: async function (id, mesRef) {
+      return api.updateResponsavel(id, { inativo_desde: mesRef });
+    },
+
+    reativarResponsavel: async function (id) {
+      return api.updateResponsavel(id, { inativo_desde: null });
     },
 
     addResponsavel: async function (resp) {
@@ -346,6 +375,7 @@ var AppData = (function () {
       if (dados.orcamentos  !== undefined) payload.orcamentos  = dados.orcamentos;
       if (dados.ganhos_mes         !== undefined) payload.ganhos_mes         = dados.ganhos_mes;
       if (dados.despesas_fixas_mes !== undefined) payload.despesas_fixas_mes = dados.despesas_fixas_mes;
+      if (dados.inativo_desde      !== undefined) payload.inativo_desde      = dados.inativo_desde;
       var { data, error } = await db.from('responsaveis').update(payload).eq('id', id).select().single();
       if (error) throw error;
       var idx = responsaveis.findIndex(function (x) { return x.id === id; });

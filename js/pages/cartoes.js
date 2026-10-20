@@ -393,7 +393,7 @@ Router.register('cartoes', function (container) {
 
       var opts = [];
       if (col === 'resp') {
-        AppData.responsaveis.forEach(function (r) {
+        AppData.getResponsaveisAtivos().forEach(function (r) {
           if (r.nome && opts.indexOf(r.nome) === -1) opts.push(r.nome);
         });
       } else {
@@ -684,7 +684,7 @@ Router.register('cartoes', function (container) {
             '<div style="display:flex;align-items:center;gap:12px">' +
               '<select id="filtro-resp-lanc" style="padding:6px 10px;border:1px solid var(--color-border);border-radius:8px;font-size:13px;background:var(--color-surface)">' +
                 '<option value="todos">Todos os Responsáveis</option>' +
-                AppData.responsaveis.map(function (r) {
+                AppData.getResponsaveisAtivos().map(function (r) {
                   return '<option value="' + r.id + '"' + (String(r.id) === filtroRespId ? ' selected' : '') + '>' + r.nome + '</option>';
                 }).join('') +
               '</select>' +
@@ -903,9 +903,29 @@ Router.register('cartoes', function (container) {
     var editandoTipo = 'despesa';
 
     var optsResp = '<option value="">— Sem responsável —</option>' +
-      AppData.responsaveis.map(function (r) {
+      AppData.getResponsaveisAtivos().map(function (r) {
         return '<option value="' + r.id + '">' + r.nome + '</option>';
       }).join('');
+
+    // Responsáveis desativados ficam ocultos; só aparecem ao editar um lançamento que já os usa
+    function ajustarRespInativos(l) {
+      var sel = document.getElementById('lc-resp');
+      sel.querySelectorAll('option[data-inativo]').forEach(function (o) { o.remove(); });
+      if (l && l.responsavelId && !sel.querySelector('option[value="' + l.responsavelId + '"]')) {
+        var r = AppData.getById(l.responsavelId);
+        if (r) {
+          var opt = document.createElement('option');
+          opt.value = r.id;
+          opt.textContent = r.nome + ' (inativo)';
+          opt.dataset.inativo = '1';
+          sel.appendChild(opt);
+        }
+      }
+      document.querySelectorAll('.lc-split-inativo').forEach(function (lbl) {
+        var usado = !!(l && l.splits || []).find(function (s) { return String(s.respId) === lbl.dataset.id; });
+        lbl.style.display = usado ? 'flex' : 'none';
+      });
+    }
 
     var modal = document.createElement('div');
     modal.className = 'modal-overlay';
@@ -936,10 +956,12 @@ Router.register('cartoes', function (container) {
           '<div id="lc-splits-grupo" style="display:none;background:#f8fafc;border:1px solid var(--color-border);border-radius:10px;padding:14px;margin-bottom:4px">' +
             '<div style="font-size:12px;font-weight:600;color:var(--color-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Selecione os responsáveis</div>' +
             AppData.responsaveis.map(function (r) {
-              return '<label style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;padding:6px 0;border-bottom:1px solid var(--color-border)">' +
+              var inativo = !AppData.isRespAtivoEm(r);
+              return '<label' + (inativo ? ' class="lc-split-inativo" data-id="' + r.id + '"' : '') +
+                ' style="display:' + (inativo ? 'none' : 'flex') + ';align-items:center;justify-content:space-between;gap:8px;cursor:pointer;padding:6px 0;border-bottom:1px solid var(--color-border)">' +
                 '<span style="display:flex;align-items:center;gap:8px">' +
                   '<input type="checkbox" class="lc-split-check" data-id="' + r.id + '" data-nome="' + r.nome + '" style="width:15px;height:15px;accent-color:var(--color-primary)" />' +
-                  r.nome +
+                  r.nome + (inativo ? ' (inativo)' : '') +
                 '</span>' +
                 '<span class="lc-split-val" data-id="' + r.id + '" style="font-size:13px;color:var(--color-muted)">—</span>' +
               '</label>';
@@ -1011,6 +1033,7 @@ Router.register('cartoes', function (container) {
       var hoje = new Date();
       var hojeISO = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-' + String(hoje.getDate()).padStart(2, '0');
       document.getElementById('lc-data').value           = hojeISO;
+      ajustarRespInativos(null);
       document.getElementById('lc-resp').value           = '';
       document.getElementById('lc-desc').value           = '';
       document.getElementById('lc-cat').selectedIndex    = 0;
@@ -1034,6 +1057,7 @@ Router.register('cartoes', function (container) {
       editandoTipo = l.tipo || 'despesa';
       restaurarFooter();
       document.getElementById('lc-titulo').textContent = 'Editar Lançamento';
+      ajustarRespInativos(l);
       document.getElementById('lc-data').value         = fmtISO(l.data);
       document.getElementById('lc-desc').value         = l.desc;
       document.getElementById('lc-cat').value          = l.cat;
@@ -1309,7 +1333,7 @@ Router.register('cartoes', function (container) {
       return '<option value="' + cat.nome + '">' + cat.nome + '</option>';
     }).join('');
 
-    var checksRespAdiant = AppData.responsaveis.map(function (r) {
+    var checksRespAdiant = AppData.getResponsaveisAtivos().map(function (r) {
       return '<label style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;padding:6px 0;border-bottom:1px solid var(--color-border)">' +
         '<span style="display:flex;align-items:center;gap:8px">' +
           '<input type="checkbox" class="adiant-resp-check" data-id="' + r.id + '" data-nome="' + r.nome.replace(/"/g, '&quot;') + '" style="width:15px;height:15px;accent-color:var(--color-primary)" />' +
@@ -1467,7 +1491,7 @@ Router.register('cartoes', function (container) {
 
     function optsRespLote(sel) {
       return '<option value="">— Sem responsável —</option>' +
-        AppData.responsaveis.map(function (r) {
+        AppData.getResponsaveisAtivos().map(function (r) {
           return '<option value="' + r.id + '"' + (String(r.id) === String(sel) ? ' selected' : '') + '>' + r.nome + '</option>';
         }).join('');
     }

@@ -3358,3 +3358,228 @@ button { cursor: pointer; border: none; background: none; }
 .drill-overlay.sheet-closing .drill-card {
   animation: sheet-down 0.25s ease both;
 }
+
+/* =====================
+   Ajustes de layout mobile
+   — impede que conteúdo largo estique a página (o que fazia o
+     navegador do celular reduzir o zoom de tudo)
+===================== */
+#main-wrapper,
+#app-content {
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  html, body {
+    overflow-x: clip;
+  }
+
+  /* ── Top bar: título encurta, seletor de competência compacto ── */
+  #top-bar {
+    gap: 10px;
+    padding: 0 12px;
+  }
+
+  #page-title {
+    min-width: 0;
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .top-bar-right {
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .top-bar-right .user-avatar {
+    display: none;
+  }
+
+  #sel-competencia-global {
+    min-width: 0;
+    max-width: 118px;
+    padding: 6px 2px;
+    font-size: 16px; /* evita zoom automático no iOS */
+  }
+
+  .comp-nav-btn {
+    width: 34px;
+    min-height: 38px;
+  }
+}
+
+@media (max-width: 768px) {
+  #sel-competencia-global {
+    max-width: none;
+    -webkit-appearance: none;
+    appearance: none;
+    padding: 6px 6px;
+  }
+
+  /* ── Dashboard: pílulas de visão em grade 2×2 (sem cortar a última) ── */
+  .dash-visao-pills {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .dash-visao-pill {
+    justify-content: center;
+    padding: 10px 8px;
+  }
+
+  /* ── Cards de resumo: 2 colunas; com nº ímpar, o primeiro ocupa a linha toda ── */
+  .summary-grid,
+  .summary-grid[style] {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px;
+  }
+
+  .summary-grid > .summary-card:first-child:nth-last-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .summary-card {
+    padding: 14px 14px 12px;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .summary-card .card-value {
+    font-size: 19px;
+    letter-spacing: -0.3px;
+    overflow-wrap: anywhere;
+  }
+
+  .summary-grid > .summary-card:first-child:nth-last-child(odd) .card-value {
+    font-size: 26px;
+  }
+
+  .summary-card .card-label {
+    font-size: 10px;
+    letter-spacing: 0.3px;
+  }
+
+  .dash-card-icon-badge {
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
+  }
+
+  .dash-card-watermark {
+    font-size: 60px;
+  }
+
+  /* Sem efeito de hover "pulando" no toque */
+  .summary-card:hover,
+  .dash-card-drillable:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 400px) {
+  .summary-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* iOS dá zoom automático ao focar campos com fonte < 16px — inclusive os com estilo inline */
+@media (max-width: 768px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Tabelas que viram cartões no mobile (cada <td data-label> vira "rótulo: valor") */
+@media (max-width: 768px) {
+  .data-table.data-table-cards {
+    min-width: 0;
+  }
+
+  .data-table-cards thead {
+    display: none;
+  }
+
+  .data-table-cards,
+  .data-table-cards tbody,
+  .data-table-cards tr,
+  .data-table-cards td {
+    display: block;
+    width: 100%;
+  }
+
+  .data-table-cards tr {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .data-table-cards td {
+    padding: 4px 0 !important;
+    border: none !important;
+  }
+
+  .data-table-cards td[data-label] {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+
+  .data-table-cards td[data-label]::before {
+    content: attr(data-label);
+    color: var(--color-muted);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    flex-shrink: 0;
+  }
+
+  .data-table-cards td.resp-acoes {
+    display: flex !important;
+    flex-wrap: wrap;
+    padding-top: 10px !important;
+  }
+
+  .data-table-cards td.resp-acoes .btn {
+    flex: 1;
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+/* DRE: categorias clicáveis abrem o popup de lançamentos */
+.dre-cat-clicavel {
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.dre-cat-item.dre-cat-clicavel {
+  padding: 6px 8px;
+  margin: -6px -8px;
+}
+
+.dre-cat-clicavel:hover {
+  background: var(--color-primary-light);
+}
+
+.dre-cat-item.dre-cat-clicavel .dre-cat-name::after,
+.dre-meta-info.dre-cat-clicavel > span:first-of-type::after {
+  content: ' ›';
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+/* Popup de categoria da DRE não tem coluna de categoria: a 3ª coluna é o valor */
+.drill-table-sem-cat .drill-th:nth-child(3) { display: table-cell; }

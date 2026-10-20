@@ -158,7 +158,9 @@ Router.register('caixinhas', function (container) {
     if (ant) ant.remove();
 
     var corSel  = c.cor || CORES[0];
-    var admins  = AppData.getFluxoCaixa();
+    var admins  = AppData.responsaveis.filter(function (r) {
+      return r.perfil === 'Administrador' && (AppData.isRespAtivoEm(r) || r.id === c.responsavelId);
+    });
     var optsAdm = '<option value="">— Sem responsável —</option>' +
       admins.map(function (r) {
         return '<option value="' + r.id + '"' + (c.responsavelId === r.id ? ' selected' : '') + '>' + r.nome + '</option>';
@@ -929,7 +931,11 @@ Router.register('caixinhas', function (container) {
   }
 
   function buildMainHTML() {
-    var admins     = AppData.getFluxoCaixa();
+    // Responsáveis desativados continuam aparecendo enquanto tiverem caixinhas (o saldo existe)
+    var admins     = AppData.responsaveis.filter(function (r) {
+      return r.perfil === 'Administrador' && (AppData.isRespAtivoEm(r) ||
+        AppData.caixinhas.some(function (c) { return c.responsavelId === r.id; }));
+    });
     var saldoTotal = getSaldoGeral();
     var ocultas    = getOcultas();
 

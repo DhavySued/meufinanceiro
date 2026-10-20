@@ -2,9 +2,11 @@ const express = require('express');
 const initSqlJs = require('sql.js');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 const app = express();
-const PORT = 3000;
+const PORT = 4000;
+const HOST = '0.0.0.0'; // todas as interfaces: acessível pela rede interna (ex: celular no mesmo Wi-Fi)
 const DB_PATH = path.join(__dirname, 'banco.db');
 
 app.use(express.json());
@@ -227,9 +229,21 @@ async function startServer() {
   });
 
   // ── Iniciar ──────────────────────────────────────────────
-  app.listen(PORT, () => {
-    console.log(`\n  ✅ Meu Financeiro rodando em http://localhost:${PORT}\n`);
-    console.log(`  📁 Banco de dados: ${DB_PATH}\n`);
+  const server = app.listen(PORT, HOST, () => {
+    console.log(`\n  ✅ Meu Financeiro rodando em http://localhost:${PORT}`);
+    Object.values(os.networkInterfaces()).flat()
+      .filter(i => i && i.family === 'IPv4' && !i.internal)
+      .forEach(i => console.log(`  📱 Rede interna: http://${i.address}:${PORT}`));
+    console.log(`\n  📁 Banco de dados: ${DB_PATH}\n`);
+  });
+
+  server.on('error', err => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\n  ❌ A porta ${PORT} já está em uso. Encerre o processo que a está usando e tente novamente.\n`);
+    } else {
+      console.error('Erro no servidor:', err);
+    }
+    process.exit(1);
   });
 }
 

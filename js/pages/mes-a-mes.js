@@ -121,15 +121,15 @@ Router.register('mes-a-mes', function (container) {
 
   // ── Estrutura fixa da página (renderizada uma vez) ──
   function renderPagina() {
-    var resps = AppData.getFluxoCaixa();
-    if (!tabAtiva && resps.length) tabAtiva = resps[0].id;
+    var resps = AppData.getFluxoCaixa(AppData.mesRefDe(mesAtualIdx));
+    if (!resps.some(function (r) { return r.id === tabAtiva; })) tabAtiva = resps.length ? resps[0].id : null;
 
     container.innerHTML =
       '<div class="page-header" style="flex-wrap:wrap;gap:10px">' +
         '<h2>DRE · Mês a Mês por Quinzena</h2>' +
         '<select id="dre-mes-sel" style="padding:7px 12px;border:1px solid var(--color-border);border-radius:8px;font-size:13px;background:var(--color-surface)">' +
           MESES_NOMES.map(function (m, i) {
-            return '<option value="' + i + '"' + (i === mesAtualIdx ? ' selected' : '') + '>' + m + ' 2026</option>';
+            return '<option value="' + i + '"' + (i === mesAtualIdx ? ' selected' : '') + '>' + m + ' ' + AppState.ano + '</option>';
           }).join('') +
         '</select>' +
       '</div>' +
@@ -148,7 +148,7 @@ Router.register('mes-a-mes', function (container) {
     document.getElementById('dre-mes-sel').addEventListener('change', function () {
       mesAtualIdx = parseInt(this.value);
       AppState.set(mesAtualIdx, AppState.ano);
-      renderConteudo();
+      renderPagina();
     });
 
     document.getElementById('dre-tabs').addEventListener('click', function (e) {
@@ -168,7 +168,7 @@ Router.register('mes-a-mes', function (container) {
     var resp = AppData.getById(tabAtiva);
     if (!resp) {
       document.getElementById('dre-content').innerHTML =
-        '<div class="section-box" style="padding:40px;text-align:center;color:var(--color-muted)">Nenhum responsável cadastrado.</div>';
+        '<div class="section-box" style="padding:40px;text-align:center;color:var(--color-muted)">Nenhum responsável ativo nesta competência.</div>';
       return;
     }
     renderDRE(mesAtualIdx, resp);
@@ -176,9 +176,9 @@ Router.register('mes-a-mes', function (container) {
 
   // ── DRE por quinzena ──
   function renderDRE(mesIdx, resp) {
-    var mesNome = MESES_NOMES[mesIdx] + ' 2026';
+    var mesNome = MESES_NOMES[mesIdx] + ' ' + AppState.ano;
     var respId  = resp.id;
-    var mesKey  = '2026-' + String(mesIdx + 1).padStart(2, '0');
+    var mesKey  = AppState.ano + '-' + String(mesIdx + 1).padStart(2, '0');
     var isNovoModelo = mesKey >= '2026-07';
 
     function getReceitasQz() {
@@ -373,6 +373,107 @@ Router.register('mes-a-mes', function (container) {
       return Math.max(0, net);
     }
 
+    // Lançamentos de uma categoria no mês para este responsável (valor = parte dele quando dividido)
+    function lancsDaCategoria(catNome, soCartao) {
+      return AppData.getLancamentos()
+        .filter(function (l) {
+          if (l.cat !== catNome || AppData.getMesRef(l) !== mesKey) return false;
+          if (soCartao && !l.cartaoId) return false;
+          if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respId; });
+          return l.responsavelId === respId;
+        })
+        .map(function (l) {
+          var v = Math.abs(l.valor);
+          if (l.isDividido && l.splits) {
+            var sp = l.splits.find(function (x) { return x.respId === respId; });
+            v = sp ? Math.abs(sp.valor) : 0;
+          }
+          return {
+            data: l.data, desc: l.desc, valor: l.tipo === 'receita' ? -v : v,
+            cartao: l.cartaoNome || '', dividido: !!(l.isDividido && l.splits),
+            parcela: l.parcela, totalParcelas: l.totalParcelas,
+          };
+        })
+        .sort(function (a, b) {
+          var da = a.data.split('/').reverse().join(''), db = b.data.split('/').reverse().join('');
+          return da < db ? 1 : da > db ? -1 : 0;
+        });
+    }
+
+    function escHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    function abrirPopupCategoria(catNome, soCartao) {
+      var items = lancsDaCategoria(catNome, soCartao);
+      var total = items.reduce(function (s, i) { return s + i.valor; }, 0);
+
+      var rowsHTML = items.length
+        ? items.map(function (it) {
+            var badges = '';
+            if (it.cartao) badges += '<span class="drill-badge">' + escHtml(it.cartao) + '</span>';
+            if (it.totalParcelas > 1) badges += '<span class="drill-badge drill-badge-parcela">' + it.parcela + '/' + it.totalParcelas + '</span>';
+            if (it.dividido) badges += '<span class="drill-badge drill-badge-resp">dividido</span>';
+            var cor = it.valor < 0 ? 'var(--color-income)' : 'var(--color-expense)';
+            return '<tr class="drill-row">' +
+              '<td class="drill-td drill-td-data">' + escHtml(it.data) + '</td>' +
+              '<td class="drill-td drill-td-desc"><span class="drill-desc-text">' + escHtml(it.desc) + '</span>' + badges + '</td>' +
+              '<td class="drill-td drill-td-val" style="color:' + cor + '">' + (it.valor < 0 ? '+' : '') + fmtR(Math.abs(it.valor)) + '</td>' +
+            '</tr>';
+          }).join('')
+        : '<tr><td colspan="3" class="drill-empty">Nenhum lançamento nesta categoria no mês.</td></tr>';
+
+      var overlay = document.createElement('div');
+      overlay.className = 'modal-overlay drill-overlay';
+      overlay.innerHTML =
+        '<div class="drill-card">' +
+          '<div class="drill-header">' +
+            '<div class="drill-header-left">' +
+              '<div class="drill-header-icon" style="background:rgba(126,34,206,0.12);color:var(--color-primary)">' +
+                '<i class="ph-fill ph-tag"></i>' +
+              '</div>' +
+              '<div class="drill-header-info">' +
+                '<div class="drill-header-title">' + escHtml(catNome) + '</div>' +
+                '<div class="drill-header-sub" style="color:var(--color-muted)">' +
+                  escHtml(resp.nome.split(' ')[0]) + ' · ' + mesNome + ' · ' + items.length + ' ' + (items.length === 1 ? 'lançamento' : 'lançamentos') +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+            '<button class="drill-close" aria-label="Fechar"><i class="ph ph-x"></i></button>' +
+          '</div>' +
+          '<div class="drill-body">' +
+            '<table class="drill-table drill-table-sem-cat">' +
+              '<thead><tr>' +
+                '<th class="drill-th">Data</th>' +
+                '<th class="drill-th">Descrição</th>' +
+                '<th class="drill-th drill-th-right">Valor</th>' +
+              '</tr></thead>' +
+              '<tbody>' + rowsHTML + '</tbody>' +
+            '</table>' +
+          '</div>' +
+          '<div class="drill-footer">' +
+            '<span class="drill-footer-label">Total</span>' +
+            '<span class="drill-footer-val" style="color:var(--color-expense)">' + fmtR(total) + '</span>' +
+          '</div>' +
+        '</div>';
+
+      document.body.appendChild(overlay);
+
+      function fechar() {
+        document.removeEventListener('keydown', onKey);
+        overlay.classList.add('drill-overlay-out');
+        setTimeout(function () { overlay.remove(); }, 240);
+      }
+      function onKey(e) { if (e.key === 'Escape') fechar(); }
+
+      overlay.querySelector('.drill-close').addEventListener('click', fechar);
+      overlay.addEventListener('click', function (e) { if (e.target === overlay) fechar(); });
+      document.addEventListener('keydown', onKey);
+      requestAnimationFrame(function () { overlay.classList.add('drill-overlay-in'); });
+    }
+
     function buildDespQz() {
       var despQ1 = [], despQ2 = [];
 
@@ -444,7 +545,7 @@ Router.register('mes-a-mes', function (container) {
             : '<span class="dre-meta-ok">resta ' + fmtR(x.restante) + '</span>';
           var tdInfo = '<td class="dre-td"' + (x.excedeu ? ' colspan="2"' : '') + '>' +
               ckBox(ck) +
-              '<div class="dre-meta-info"' + doneDescStyle(ck) + '>' +
+              '<div class="dre-meta-info dre-cat-clicavel" data-cat-drill="' + encodeURIComponent(x.desc) + '" title="Ver lançamentos"' + doneDescStyle(ck) + '>' +
                 '<i class="ph ph-lock-simple" style="opacity:0.35;font-size:11px" title="Orçamento provisionado"></i>' +
                 '<span>' + x.desc + '</span>' +
                 '<span class="dre-meta-gasto">gasto ' + fmtR(x.gasto) + '</span>' +
@@ -547,7 +648,7 @@ Router.register('mes-a-mes', function (container) {
             var valTxt = net < 0
               ? '<span class="dre-cat-val" style="color:var(--color-expense)">-' + fmtR(-net) + '</span>'
               : '<span class="dre-cat-val" style="color:var(--color-income)">+' + fmtR(net) + '</span>';
-            return '<div class="dre-cat-item">' +
+            return '<div class="dre-cat-item dre-cat-clicavel" data-cat-drill="' + encodeURIComponent(cat) + '" data-so-cartao="1" title="Ver lançamentos">' +
               '<div class="dre-cat-row">' +
                 '<span class="dre-cat-dot" style="background:' + cor + '"></span>' +
                 '<span class="dre-cat-name">' + cat + '</span>' +
@@ -710,6 +811,11 @@ Router.register('mes-a-mes', function (container) {
 
       // Delegação de cliques no conteúdo da DRE
       el.onclick = async function (e) {
+        var catDrill = e.target.closest('[data-cat-drill]');
+        if (catDrill && !e.target.closest('.dre-row-check')) {
+          abrirPopupCategoria(decodeURIComponent(catDrill.dataset.catDrill), !!catDrill.dataset.soCartao);
+          return;
+        }
         var btnDel  = e.target.closest('.btn-del-row');
         var btnAddDesp = e.target.closest('.btn-add-desp');
         var btnAddRec  = e.target.closest('.btn-add-rec');
