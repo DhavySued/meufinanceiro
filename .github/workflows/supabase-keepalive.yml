@@ -1,25 +1,30 @@
 # Mantém o projeto Supabase (plano grátis) ativo.
 # O Supabase pausa projetos sem atividade por 7 dias; este workflow
-# faz uma consulta leve a cada 3 dias para registrar atividade.
+# faz uma escrita leve (tabela keepalive) todo dia para registrar atividade.
 name: Supabase keep-alive
 
 on:
   schedule:
-    - cron: '0 12 */3 * *'   # a cada 3 dias, 12:00 UTC
+    - cron: '0 12 * * *'     # todo dia, 12:00 UTC
   workflow_dispatch:         # permite rodar manualmente pela aba Actions
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Consulta leve no banco
+      - name: Escrita leve no banco
         env:
           SUPABASE_URL: https://wvlrlhxelffuvcnpeoih.supabase.co
           SUPABASE_KEY: sb_publishable_elDakDGsx-wegEOx67QaEw_jh2KwovJ
         run: |
-          status=$(curl -s -o /dev/null -w "%{http_code}" \
-            "$SUPABASE_URL/rest/v1/categorias?select=id&limit=1" \
+          # Chama a função keepalive_ping (ver supabase/keepalive.sql),
+          # que atualiza a linha da tabela keepalive.
+          status=$(curl -s -o response.txt -w "%{http_code}" -X POST \
+            "$SUPABASE_URL/rest/v1/rpc/keepalive_ping" \
             -H "apikey: $SUPABASE_KEY" \
-            -H "Authorization: Bearer $SUPABASE_KEY")
+            -H "Authorization: Bearer $SUPABASE_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{}')
           echo "HTTP $status"
+          cat response.txt; echo
           test "$status" -lt 400
