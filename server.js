@@ -5,7 +5,7 @@ const path = require('path');
 const os = require('os');
 
 const app = express();
-const PORT = 4000;
+const PORT = parseInt(process.env.PORT, 10) || 4000; // padrão 4000; outra porta: PORT=3000 npm start
 const HOST = '0.0.0.0'; // todas as interfaces: acessível pela rede interna (ex: celular no mesmo Wi-Fi)
 const DB_PATH = path.join(__dirname, 'banco.db');
 

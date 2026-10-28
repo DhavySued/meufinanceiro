@@ -1,5 +1,6 @@
 // Persiste filtros entre trocas de mês (Router.refresh não reseta)
 var _dashRespIds  = [];      // [] = todos os responsáveis
+var _dashRespNenhum = false; // true = nenhum responsável marcado (valores zerados)
 var _dashVisao    = 'geral'; // 'geral' | 'cartao' | 'dre'
 var _dashCartaoId = '';      // '' = todos os cartões
 var _dashCat      = [];      // [] = todas as categorias
@@ -35,6 +36,35 @@ Router.register('dashboard', function (container) {
       ? ((resp.despesas_fixas_mes || {})[mesKey] || [])
       : (((resp.despesas_fixas_mes || {})[mesKey]) || (resp.despesasFixas || []));
     return isNovo ? src : src.filter(function (d) { return (!d.de || mesKey >= d.de) && (!d.ate || mesKey <= d.ate); });
+  }
+
+  // Responsáveis selecionados no filtro (null = todos), definido a cada render.
+  // Transferência entre dois responsáveis selecionados é interna: não é receita nem despesa.
+  var selDRE = null;
+
+  function transfExternas(resp, mesIdx) {
+    var mesRef = AppData.mesRefDe(mesIdx);
+    function dentro(id) {
+      return selDRE ? selDRE.indexOf(id) !== -1 : AppData.isRespAtivoEm(AppData.getById(id), mesRef);
+    }
+    var lista = AppData.getTransferencias(mesRef);
+    return {
+      enviadas:  lista.filter(function (t) { return t.origem_id === resp.id && !dentro(t.destino_id); }),
+      recebidas: lista.filter(function (t) { return t.destino_id === resp.id && !dentro(t.origem_id); }),
+    };
+  }
+
+  function somaTransf(lista) {
+    return lista.reduce(function (s, t) { return s + t.valor; }, 0);
+  }
+
+  function itemTransf(t, resp, enviada) {
+    var outro = AppData.getById(enviada ? t.destino_id : t.origem_id);
+    var nome  = outro ? outro.nome.split(' ')[0] : '?';
+    return {
+      data: '—', valor: t.valor, cat: 'Transferência', resp: resp.nome,
+      desc: '⇄ ' + (enviada ? 'Para ' : 'De ') + nome + (t.descricao ? ' · ' + t.descricao : ''),
+    };
   }
 
   // ── DRE: replica a lógica de cálculo do mes-a-mes.js ──
@@ -78,6 +108,10 @@ Router.register('dashboard', function (container) {
 
     AppData.getDespesasManuais(mesIdx, respId).forEach(function (d) { totalD += d.valor; });
 
+    var tr = transfExternas(resp, mesIdx);
+    totalR += somaTransf(tr.recebidas);
+    totalD += somaTransf(tr.enviadas);
+
     return { receita: totalR, despesa: totalD };
   }
 
@@ -85,7 +119,7 @@ Router.register('dashboard', function (container) {
   function calcSummaryDRE(mesIdx, respId, cat) {
     if (respId === 'geral') {
       var receita = 0, despesa = 0;
-      AppData.getFluxoCaixa(AppData.mesRefDe(mesIdx)).forEach(function (r) {
+      AppData.getResponsaveisAtivos(AppData.mesRefDe(mesIdx)).forEach(function (r) {
         var d = calcDREResp(mesIdx, r, cat);
         receita += d.receita;
         despesa += d.despesa;
@@ -105,12 +139,14 @@ Router.register('dashboard', function (container) {
     // Receitas: mantém ganhos configurados no perfil (DRE-style)
     var receita = 0;
     if (respId === 'geral') {
-      AppData.getFluxoCaixa(AppData.mesRefDe(mesIdx)).forEach(function (r) {
+      AppData.getResponsaveisAtivos(AppData.mesRefDe(mesIdx)).forEach(function (r) {
         receita += getGanhosDoMes(r, mesIdx).reduce(function (s, g) { return s + g.valor; }, 0);
+        receita += somaTransf(transfExternas(r, mesIdx).recebidas);
       });
     } else {
       var resp = AppData.getById(parseInt(respId));
-      if (resp) receita = getGanhosDoMes(resp, mesIdx).reduce(function (s, g) { return s + g.valor; }, 0);
+      if (resp) receita = getGanhosDoMes(resp, mesIdx).reduce(function (s, g) { return s + g.valor; }, 0) +
+        somaTransf(transfExternas(resp, mesIdx).recebidas);
     }
 
     // Despesas: apenas lançamentos de cartão
@@ -151,7 +187,7 @@ Router.register('dashboard', function (container) {
     var mesRef = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
 
     var resps  = respId === 'geral'
-      ? AppData.getFluxoCaixa(AppData.mesRefDe(mesIdx))
+      ? AppData.getResponsaveisAtivos(AppData.mesRefDe(mesIdx))
       : [AppData.getById(parseInt(respId))].filter(Boolean);
     var receita = 0, despesa = 0;
 
@@ -168,6 +204,10 @@ Router.register('dashboard', function (container) {
       getFixasDoMes(resp, mesIdx).forEach(function (d) { despesa += d.valor; });
 
       AppData.getDespesasManuais(mesIdx, resp.id).forEach(function (d) { despesa += d.valor; });
+
+      var tr = transfExternas(resp, mesIdx);
+      receita += somaTransf(tr.recebidas);
+      despesa += somaTransf(tr.enviadas);
     });
 
     return { receita: receita, despesa: despesa };
@@ -176,13 +216,14 @@ Router.register('dashboard', function (container) {
   // ── Drill-down Receitas ──
   function getDrillReceitas(mesIdx, respId) {
     var resps = respId === 'geral'
-      ? AppData.getFluxoCaixa(AppData.mesRefDe(mesIdx))
+      ? AppData.getResponsaveisAtivos(AppData.mesRefDe(mesIdx))
       : [AppData.getById(parseInt(respId))].filter(Boolean);
     var items = [];
     resps.forEach(function (resp) {
       getGanhosDoMes(resp, mesIdx).forEach(function (g) {
         items.push({ data: '—', desc: g.desc || g.nome || 'Receita', valor: g.valor, cat: 'Conta a Receber', resp: resp.nome });
       });
+      transfExternas(resp, mesIdx).recebidas.forEach(function (t) { items.push(itemTransf(t, resp, false)); });
     });
     return items;
   }
@@ -193,7 +234,7 @@ Router.register('dashboard', function (container) {
 
     var respInt = respId !== 'geral' ? parseInt(respId) : null;
     var resps   = respId === 'geral'
-      ? AppData.getFluxoCaixa(AppData.mesRefDe(mesIdx))
+      ? AppData.getResponsaveisAtivos(AppData.mesRefDe(mesIdx))
       : [AppData.getById(respInt)].filter(Boolean);
     var items   = [];
 
@@ -241,6 +282,7 @@ Router.register('dashboard', function (container) {
       AppData.getDespesasManuais(mesIdx, resp.id).forEach(function (d) {
         items.push({ data: '—', desc: d.desc || 'Despesa Manual', valor: d.valor, cat: 'Manual', resp: resp.nome });
       });
+      transfExternas(resp, mesIdx).enviadas.forEach(function (t) { items.push(itemTransf(t, resp, true)); });
     });
 
     items.sort(function (a, b) {
@@ -257,7 +299,7 @@ Router.register('dashboard', function (container) {
     var mesRef = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
 
     var resps  = respId === 'geral'
-      ? AppData.getFluxoCaixa(AppData.mesRefDe(mesIdx))
+      ? AppData.getResponsaveisAtivos(AppData.mesRefDe(mesIdx))
       : [AppData.getById(parseInt(respId))].filter(Boolean);
     var items  = [];
 
@@ -277,6 +319,8 @@ Router.register('dashboard', function (container) {
       AppData.getDespesasManuais(mesIdx, resp.id).forEach(function (d) {
         items.push({ data: '—', desc: d.desc || 'Despesa Manual', valor: d.valor, cat: 'Manual', resp: resp.nome });
       });
+
+      transfExternas(resp, mesIdx).enviadas.forEach(function (t) { items.push(itemTransf(t, resp, true)); });
     });
 
     return items;
@@ -515,9 +559,11 @@ Router.register('dashboard', function (container) {
   }
 
   // ── Totais anuais ──
-  function calcMesAnual(m) {
+  // ids = responsáveis selecionados no filtro (null = todos)
+  function calcMesAnual(m, ids) {
     var receita = 0, despesa = 0;
-    AppData.getFluxoCaixa(AppData.mesRefDe(m)).forEach(function (r) {
+    AppData.getResponsaveisAtivos(AppData.mesRefDe(m)).forEach(function (r) {
+      if (ids && ids.indexOf(r.id) === -1) return;
       var d = calcDREResp(m, r);
       receita += d.receita;
       despesa += d.despesa;
@@ -542,19 +588,33 @@ Router.register('dashboard', function (container) {
     '</div>';
   }
 
+  // Responsáveis do filtro: todos os ativos na competência. "Todos" = soma de cada um,
+  // então desmarcar alguém tira exatamente o valor dele.
+  function respsDaVisao() {
+    return AppData.getResponsaveisAtivos();
+  }
+
   // ── Render principal ──
   function render(respIds, visao, cartaoId, cat) {
     var mesNome = MESES_NOMES[AppState.mesIdx];
     var anoVal  = AppState.ano;
 
     // Resolve respIds → effRespId para funções legadas
-    var allRespsCount = AppData.getResponsaveisAtivos().length;
-    var isGeral  = !respIds || respIds.length === 0 || respIds.length >= allRespsCount;
+    var respsVisao = respsDaVisao(visao);
+    var tinhaSelecao = respIds && respIds.length > 0;
+    respIds = (respIds || []).filter(function (id) {
+      return respsVisao.some(function (r) { return r.id === id; });
+    });
+    // Nenhum marcado (ou os marcados não existem nesta competência): tudo zera, via caminho multi vazio
+    var nenhum = _dashRespNenhum || (tinhaSelecao && respIds.length === 0);
+    var allRespsCount = respsVisao.length;
+    var isGeral  = !nenhum && (respIds.length === 0 || respIds.length >= allRespsCount);
     var isSingle = !isGeral && respIds.length === 1;
-    var isMulti  = !isGeral && !isSingle;
+    var isMulti  = nenhum || (!isGeral && !isSingle);
     var effRespId = isGeral ? 'geral' : (isSingle ? String(respIds[0]) : null);
+    selDRE = isGeral ? null : (isSingle ? [parseInt(effRespId)] : respIds.slice());
 
-    var respLabel = isGeral ? 'Todos'
+    var respLabel = nenhum ? 'Nenhum' : isGeral ? 'Todos'
       : isSingle
         ? (AppData.responsaveis.find(function (r) { return String(r.id) === String(respIds[0]); }) || { nome: 'Resp' }).nome.split(' ')[0]
         : respIds.length + ' responsáveis';
@@ -705,7 +765,7 @@ Router.register('dashboard', function (container) {
     // Fluxo anual
     var totalAnoR = 0, totalAnoD = 0;
     var anoRowsHTML = MESES_NOMES.map(function (m, i) {
-      var d = calcMesAnual(i);
+      var d = calcMesAnual(i, isGeral ? null : (isSingle ? [parseInt(effRespId)] : respIds));
       totalAnoR += d.receita;
       totalAnoD += d.despesa;
       var saldoM  = d.receita - d.despesa;
@@ -882,7 +942,9 @@ Router.register('dashboard', function (container) {
           : getDrillAdiantamentos(AppState.mesIdx, effRespId, cartaoId);
         items.sort(function (a, b) { return a.data < b.data ? 1 : a.data > b.data ? -1 : 0; });
       } else if (tipo === 'receita') {
-        items = getDrillReceitas(AppState.mesIdx, effRespId || 'geral');
+        items = isMulti
+          ? respIds.reduce(function (acc, id) { return acc.concat(getDrillReceitas(AppState.mesIdx, String(id))); }, [])
+          : getDrillReceitas(AppState.mesIdx, effRespId);
       } else if (_dashVisao === 'cartao') {
         items = isMulti
           ? respIds.reduce(function (acc, id) { return acc.concat(getDrillDespesasCartao(AppState.mesIdx, String(id), cartaoId, cat)); }, [])
@@ -1010,7 +1072,7 @@ Router.register('dashboard', function (container) {
   function setupRespMultiSelect() {
     var btn = document.getElementById('dash-resp-btn');
     if (!btn) return;
-    var resps = AppData.getResponsaveisAtivos();
+    var resps = respsDaVisao(_dashVisao);
 
     btn.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -1031,7 +1093,8 @@ Router.register('dashboard', function (container) {
           '<button class="dcp-action-btn" id="drp-none">Nenhum</button>' +
         '</div>';
       resps.forEach(function (r) {
-        var checked = _dashRespIds.length === 0 || _dashRespIds.indexOf(r.id) !== -1;
+        var selVisao = _dashRespIds.filter(function (id) { return resps.some(function (x) { return x.id === id; }); });
+        var checked = !_dashRespNenhum && (selVisao.length === 0 || selVisao.indexOf(r.id) !== -1);
         html += '<label class="dcp-item">' +
           '<input type="checkbox" value="' + r.id + '"' + (checked ? ' checked' : '') + '>' +
           '<span>' + r.nome.split(' ')[0] + '</span>' +
@@ -1043,10 +1106,11 @@ Router.register('dashboard', function (container) {
       function applyResp() {
         var checked = Array.from(panel.querySelectorAll('input:checked'))
           .map(function (cb) { return parseInt(cb.value); });
+        _dashRespNenhum = checked.length === 0;
         _dashRespIds = checked.length >= resps.length ? [] : checked;
         var b = document.getElementById('dash-resp-btn');
         if (b) {
-          var lbl = _dashRespIds.length === 0 ? 'Todos'
+          var lbl = _dashRespNenhum ? 'Nenhum' : _dashRespIds.length === 0 ? 'Todos'
             : _dashRespIds.length === 1
               ? (resps.find(function (r) { return r.id === _dashRespIds[0]; }) || { nome: 'Resp' }).nome.split(' ')[0]
               : _dashRespIds.length + ' responsáveis';

@@ -95,6 +95,61 @@ Router.register('mes-a-mes', function (container) {
     return m;
   }
 
+  // ── Modal de transferência entre DREs ──
+  function criarModalTransf() {
+    var ant = document.getElementById('modal-transf');
+    if (ant) ant.remove();
+    var m = document.createElement('div');
+    m.className = 'modal-overlay';
+    m.id = 'modal-transf';
+    m.innerHTML =
+      '<div class="modal">' +
+        '<div class="modal-header">' +
+          '<h3 id="transf-titulo">Nova Transferência</h3>' +
+          '<button class="modal-close" id="btn-fechar-transf">&times;</button>' +
+        '</div>' +
+        '<div class="modal-body">' +
+          '<div class="form-row">' +
+            '<div class="form-group">' +
+              '<label>De</label>' +
+              '<select id="transf-origem"></select>' +
+            '</div>' +
+            '<div class="form-group">' +
+              '<label>Para</label>' +
+              '<select id="transf-destino"></select>' +
+            '</div>' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>Descrição</label>' +
+            '<input type="text" id="transf-desc" placeholder="Ex: Reserva do mês" />' +
+          '</div>' +
+          '<div class="form-row">' +
+            '<div class="form-group">' +
+              '<label>Valor (R$)</label>' +
+              '<input type="number" id="transf-valor" placeholder="0,00" min="0" step="0.01" />' +
+            '</div>' +
+            '<div class="form-group">' +
+              '<label>Quinzena</label>' +
+              '<select id="transf-qz">' +
+                '<option value="1">1ª Quinzena (dias 01–15)</option>' +
+                '<option value="2">2ª Quinzena (dias 16–31)</option>' +
+              '</select>' +
+            '</div>' +
+          '</div>' +
+          '<p style="font-size:12.5px;color:var(--color-muted);margin:0">' +
+            'Aparece como Conta a Pagar em quem envia e Conta a Receber em quem recebe. ' +
+            'No dashboard, com os dois selecionados, não é contada (é dinheiro mudando de lugar).' +
+          '</p>' +
+        '</div>' +
+        '<div class="modal-footer">' +
+          '<button class="btn btn-outline" id="btn-cancelar-transf">Cancelar</button>' +
+          '<button class="btn btn-primary" id="btn-salvar-transf">Salvar</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(m);
+    return m;
+  }
+
   // ── Modal de replicar para próximo mês ──
   function criarModalReplicar() {
     var ant = document.getElementById('modal-replicar');
@@ -121,7 +176,7 @@ Router.register('mes-a-mes', function (container) {
 
   // ── Estrutura fixa da página (renderizada uma vez) ──
   function renderPagina() {
-    var resps = AppData.getFluxoCaixa(AppData.mesRefDe(mesAtualIdx));
+    var resps = AppData.getRespsComDRE(AppData.mesRefDe(mesAtualIdx));
     if (!resps.some(function (r) { return r.id === tabAtiva; })) tabAtiva = resps.length ? resps[0].id : null;
 
     container.innerHTML =
@@ -191,6 +246,7 @@ Router.register('mes-a-mes', function (container) {
       ).map(function (g, i) {
         return { desc: g.desc, valor: g.valor, dia: g.dia || 1, isReceita: true, gIdx: i, ckKey: 'r_' + i };
       });
+      transfDoMes().recebidas.forEach(function (t) { ganhos.push(transfItem(t, false)); });
       return {
         q1: ganhos.filter(function (g) { return g.dia <= 15; }),
         q2: ganhos.filter(function (g) { return g.dia > 15; })
@@ -203,8 +259,99 @@ Router.register('mes-a-mes', function (container) {
     var qzPendente    = 1;
 
     // ── Check de conclusão por linha (Supabase) ──
-    function isChecked(ckKey) { return AppData.isDreChecked(respId, mesIdx, ckKey); }
-    async function toggleCheck(ckKey) { return await AppData.toggleDreCheck(respId, mesIdx, ckKey); }
+    // Transferências (ckKey 't_<id>') usam o campo "realizada" do próprio registro,
+    // compartilhado pelas duas pontas; os demais itens usam dre_checks
+    function isChecked(ckKey) {
+      if (ckKey && ckKey.indexOf('t_') === 0) {
+        var t = AppData.getTransferencia(Number(ckKey.slice(2)));
+        return !!(t && t.realizada);
+      }
+      return AppData.isDreChecked(respId, mesIdx, ckKey);
+    }
+    async function toggleCheck(ckKey) {
+      if (ckKey && ckKey.indexOf('t_') === 0) return await AppData.toggleTransferencia(Number(ckKey.slice(2)));
+      return await AppData.toggleDreCheck(respId, mesIdx, ckKey);
+    }
+
+    function nomeCurto(id) {
+      var r = AppData.getById(id);
+      return r ? r.nome.split(' ')[0] : '?';
+    }
+
+    function transfItem(t, enviada) {
+      var outro = enviada ? t.destino_id : t.origem_id;
+      return {
+        desc: (enviada ? 'Para ' : 'De ') + nomeCurto(outro) + (t.descricao ? ' · ' + t.descricao : ''),
+        valor: t.valor, isTransf: true, enviada: enviada, tId: t.id, ckKey: 't_' + t.id,
+        dia: t.quinzena === 1 ? 1 : 16,
+      };
+    }
+
+    function transfDoMes() {
+      var lista = AppData.getTransferencias(mesKey);
+      return {
+        enviadas:  lista.filter(function (t) { return t.origem_id === respId; }),
+        recebidas: lista.filter(function (t) { return t.destino_id === respId; }),
+      };
+    }
+
+    // ── Modal de transferência ──
+    var modalTransf   = criarModalTransf();
+    var transfEditId  = null;
+
+    function abrirModalTransf(t, qz) {
+      transfEditId = t ? t.id : null;
+      var opts = AppData.getRespsComDRE(mesKey);
+      // Na edição, garante as duas pontas no select mesmo que alguém tenha sido desativado
+      [t && t.origem_id, t && t.destino_id].forEach(function (id) {
+        if (id && !opts.some(function (r) { return r.id === id; })) {
+          var r = AppData.getById(id);
+          if (r) opts = opts.concat([r]);
+        }
+      });
+      var html = opts.map(function (r) { return '<option value="' + r.id + '">' + r.nome + '</option>'; }).join('');
+      var selO = document.getElementById('transf-origem');
+      var selD = document.getElementById('transf-destino');
+      selO.innerHTML = html;
+      selD.innerHTML = html;
+      selO.value = String(t ? t.origem_id : respId);
+      var outroPadrao = opts.find(function (r) { return r.id !== respId; });
+      selD.value = String(t ? t.destino_id : (outroPadrao ? outroPadrao.id : respId));
+      document.getElementById('transf-titulo').textContent = t ? 'Editar Transferência' : 'Nova Transferência';
+      document.getElementById('transf-desc').value  = t ? t.descricao : '';
+      document.getElementById('transf-valor').value = t ? t.valor : '';
+      document.getElementById('transf-qz').value    = String(t ? t.quinzena : (qz || 2));
+      modalTransf.classList.add('open');
+    }
+
+    function fecharModalTransf() { modalTransf.classList.remove('open'); }
+
+    document.getElementById('btn-fechar-transf').addEventListener('click', fecharModalTransf);
+    document.getElementById('btn-cancelar-transf').addEventListener('click', fecharModalTransf);
+    modalTransf.addEventListener('click', function (e) { if (e.target === modalTransf) fecharModalTransf(); });
+
+    document.getElementById('btn-salvar-transf').addEventListener('click', async function () {
+      var dados = {
+        mes_ref:    mesKey,
+        origem_id:  parseInt(document.getElementById('transf-origem').value),
+        destino_id: parseInt(document.getElementById('transf-destino').value),
+        descricao:  document.getElementById('transf-desc').value.trim(),
+        valor:      parseFloat(document.getElementById('transf-valor').value),
+        quinzena:   parseInt(document.getElementById('transf-qz').value),
+      };
+      if (dados.origem_id === dados.destino_id) { alert('Escolha responsáveis diferentes em "De" e "Para".'); return; }
+      if (isNaN(dados.valor) || dados.valor <= 0) { alert('Informe o valor.'); return; }
+      try {
+        if (transfEditId) await AppData.updateTransferencia(transfEditId, dados);
+        else await AppData.addTransferencia(dados);
+        fecharModalTransf();
+        render();
+      } catch (err) {
+        console.error('[transferencia] erro:', err);
+        alert('Erro ao salvar transferência: ' + (err.message || JSON.stringify(err)) +
+          '\nSe for a primeira vez, execute o script supabase/transferencias.sql no Supabase.');
+      }
+    });
 
     function abrirModalItem(tipo, qz) {
       itemTipo = tipo;
@@ -255,7 +402,7 @@ Router.register('mes-a-mes', function (container) {
     // ── Modal de replicar ──
     if (modalReplicar) {
       var nextMesIdx = mesIdx + 1;
-      var nextMesKey = '2026-' + String(nextMesIdx + 1).padStart(2, '0');
+      var nextMesKey = AppState.ano + '-' + String(nextMesIdx + 1).padStart(2, '0');
       var nextMesNome = MESES_NOMES[nextMesIdx];
 
       document.getElementById('replicar-titulo').textContent =
@@ -288,7 +435,19 @@ Router.register('mes-a-mes', function (container) {
           });
         }
 
-        if (!recAtual.length && !fixAtual.length) {
+        var transfAtual = transfDoMes().enviadas;
+        if (transfAtual.length) {
+          html += '<div class="form-section-subtitle" style="margin:' + (recAtual.length || fixAtual.length ? '18px' : '4px') + ' 0 10px">Transferências enviadas</div>';
+          transfAtual.forEach(function (t) {
+            html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--color-border);cursor:pointer">' +
+              '<input type="checkbox" class="rep-transf" data-tid="' + t.id + '" checked style="width:16px;height:16px;accent-color:var(--color-primary);flex-shrink:0" />' +
+              '<span style="flex:1;font-size:13px">⇄ Para ' + escHtml(nomeCurto(t.destino_id)) + (t.descricao ? ' · ' + escHtml(t.descricao) : '') + '</span>' +
+              '<span style="color:var(--color-expense);font-weight:600;font-size:13px">' + fmtR(t.valor) + '</span>' +
+            '</label>';
+          });
+        }
+
+        if (!recAtual.length && !fixAtual.length && !transfAtual.length) {
           html = '<p style="color:var(--color-muted);font-size:13px;text-align:center;padding:24px 0">Nenhum item para replicar neste mês.</p>';
         }
 
@@ -318,7 +477,13 @@ Router.register('mes-a-mes', function (container) {
           if (d) fixSel.push(Object.assign({}, d));
         });
 
-        if (!recSel.length && !fixSel.length) {
+        var transfSel = [];
+        document.querySelectorAll('#replicar-body .rep-transf:checked').forEach(function (cb) {
+          var t = AppData.getTransferencia(Number(cb.dataset.tid));
+          if (t) transfSel.push(t);
+        });
+
+        if (!recSel.length && !fixSel.length && !transfSel.length) {
           alert('Selecione ao menos um item para replicar.');
           return;
         }
@@ -343,6 +508,20 @@ Router.register('mes-a-mes', function (container) {
             ganhos_mes: resp.ganhos_mes,
             despesas_fixas_mes: resp.despesas_fixas_mes
           });
+
+          // Transferências: não duplica se já houver uma igual (mesmo destino e descrição) no mês seguinte
+          var jaNoProximo = AppData.getTransferencias(nextMesKey);
+          for (var ti = 0; ti < transfSel.length; ti++) {
+            var t = transfSel[ti];
+            var existe = jaNoProximo.some(function (x) {
+              return x.origem_id === t.origem_id && x.destino_id === t.destino_id && x.descricao === t.descricao;
+            });
+            if (existe) continue;
+            await AppData.addTransferencia({
+              mes_ref: nextMesKey, origem_id: t.origem_id, destino_id: t.destino_id,
+              quinzena: t.quinzena, descricao: t.descricao, valor: t.valor,
+            });
+          }
           fecharModalReplicar();
           alert('Itens replicados para ' + nextMesNome + ' com sucesso!');
         } catch (err) {
@@ -512,6 +691,12 @@ Router.register('mes-a-mes', function (container) {
         if (d.quinzena === 1) despQ1.push(item); else despQ2.push(item);
       });
 
+      // 5. Transferências enviadas para outra DRE
+      transfDoMes().enviadas.forEach(function (t) {
+        var item = transfItem(t, true);
+        if (t.quinzena === 1) despQ1.push(item); else despQ2.push(item);
+      });
+
       return { despQ1: despQ1, despQ2: despQ2 };
     }
 
@@ -556,6 +741,21 @@ Router.register('mes-a-mes', function (container) {
           var tdValor = x.excedeu ? '' : '<td class="dre-td-val dre-td-val-top"><span class="' + cls + '">' + fmtR(x.restante) + '</span></td>';
           return '<tr class="dre-row dre-meta-row' + (x.excedeu ? ' dre-meta-excedida' : '') + '"' + doneTrStyle(ck) + '>' +
             tdInfo + tdValor +
+          '</tr>';
+        }
+        if (x.isTransf) {
+          var statusTxt = isChecked(ck) ? '' : ' <span class="dre-transf-prevista">prevista</span>';
+          return '<tr class="dre-row dre-transf-row"' + doneTrStyle(ck) + '>' +
+            '<td class="dre-td">' +
+              ckBox(ck) +
+              '<span' + doneDescStyle(ck) + '>' +
+                '<i class="ph ph-arrows-left-right dre-transf-icon" title="Transferência entre DREs"></i>' + escHtml(x.desc) +
+              '</span>' + statusTxt +
+            '</td>' +
+            '<td class="dre-td-val">' +
+              '<span class="' + cls + '">' + fmtR(x.valor) + '</span>' +
+              makeButtons('data-type="transf" data-tid="' + x.tId + '"') +
+            '</td>' +
           '</tr>';
         }
         if (x.isReceita) {
@@ -714,6 +914,9 @@ Router.register('mes-a-mes', function (container) {
           itemRows(despArr, 'dre-val-expense') +
           '<tr><td colspan="2" style="padding:8px 16px">' +
             '<button class="btn-add-desp dre-btn-add" data-qz="' + qzNum + '">+ Adicionar Conta a Pagar</button>' +
+            '<button class="btn-add-transf dre-btn-add dre-btn-transf" data-qz="' + qzNum + '">' +
+              '<i class="ph ph-arrows-left-right" style="pointer-events:none"></i> Transferência' +
+            '</button>' +
           '</td></tr>' +
         '</tbody></table>' +
 
@@ -822,6 +1025,30 @@ Router.register('mes-a-mes', function (container) {
         var btnEdit = e.target.closest('.btn-edit-row');
         var btnSave = e.target.closest('.btn-ei-save');
         var btnCanc = e.target.closest('.btn-ei-cancel');
+        var btnAddTransf = e.target.closest('.btn-add-transf');
+
+        if (btnAddTransf) {
+          abrirModalTransf(null, parseInt(btnAddTransf.dataset.qz));
+          return;
+        }
+
+        // Transferência: editar abre o modal; excluir pede confirmação (some das duas DREs)
+        var btnTransf = e.target.closest('[data-type="transf"]');
+        if (btnTransf && (btnEdit || btnDel)) {
+          var tr0 = AppData.getTransferencia(Number(btnTransf.dataset.tid));
+          if (!tr0) return;
+          if (btnEdit) { abrirModalTransf(tr0); return; }
+          if (!confirm('Excluir esta transferência? Ela some das duas DREs (' +
+              nomeCurto(tr0.origem_id) + ' → ' + nomeCurto(tr0.destino_id) + ').')) return;
+          try {
+            await AppData.removeTransferencia(tr0.id);
+          } catch (err) {
+            alert('Erro ao excluir transferência: ' + (err.message || JSON.stringify(err)));
+            return;
+          }
+          render();
+          return;
+        }
 
         if (btnDel) {
           if (btnDel.dataset.type === 'receita') {

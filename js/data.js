@@ -16,6 +16,7 @@ var AppData = (function () {
   var importacoes             = [];
   var dreChecks               = []; // { id, respId, mesIdx, ckKey }
   var competenciasEncerradas  = []; // ['YYYY-MM', ...]
+  var transferencias          = []; // { id, mes_ref, origem_id, destino_id, quinzena, descricao, valor, realizada }
 
   // ── Conversão de datas ──────────────────────────────────
   // Supabase armazena AAAA-MM-DD; o app usa DD/MM/AAAA
@@ -36,6 +37,20 @@ var AppData = (function () {
     return row;
   }
 
+  function normalizeTransf(t) {
+    return {
+      id: t.id, mes_ref: String(t.mes_ref).slice(0, 7),
+      origem_id: Number(t.origem_id), destino_id: Number(t.destino_id),
+      quinzena: Number(t.quinzena) === 1 ? 1 : 2, descricao: t.descricao || '',
+      valor: parseFloat(t.valor) || 0, realizada: !!t.realizada,
+    };
+  }
+
+  function checarTransfAberta(mesRef) {
+    if (competenciasEncerradas.indexOf(mesRef) !== -1)
+      throw new Error('Competência ' + mesRef + ' está encerrada.');
+  }
+
   // ── Inicialização ────────────────────────────────────────
   async function init() {
     var results = await Promise.all([
@@ -48,6 +63,7 @@ var AppData = (function () {
       db.from('despesas_manuais').select('*').order('id'),
       db.from('dre_checks').select('*'),
       db.from('competencias_encerradas').select('mes_referencia'),
+      db.from('transferencias').select('*').order('id'),
     ]);
 
     results.forEach(function (r, i) {
@@ -65,6 +81,7 @@ var AppData = (function () {
     }));
     competenciasEncerradas.splice(0, competenciasEncerradas.length,
       ...(results[8].data || []).map(function (r) { return r.mes_referencia; }));
+    transferencias.splice(0, transferencias.length, ...(results[9].data || []).map(normalizeTransf));
 
     var rawManuais = results[6].data || [];
     console.log('[despesas_manuais] erro:', results[6].error);
@@ -335,6 +352,65 @@ var AppData = (function () {
       return responsaveis.filter(function (r) {
         return r.perfil === 'Administrador' && api.isRespAtivoEm(r, mesRef);
       });
+    },
+
+    // Responsáveis com DRE própria: Administradores e quem tem "Fluxo de Caixa" marcado (ex: Reserva)
+    getRespsComDRE: function (mesRef) {
+      return responsaveis.filter(function (r) {
+        return (r.perfil === 'Administrador' || r.fluxoCaixa) && api.isRespAtivoEm(r, mesRef);
+      });
+    },
+
+    // ── Transferências entre DREs ──────────────────────────
+    getTransferencias: function (mesRef) {
+      return transferencias.filter(function (t) { return !mesRef || t.mes_ref === mesRef; });
+    },
+
+    getTransferencia: function (id) {
+      return transferencias.find(function (t) { return t.id === id; }) || null;
+    },
+
+    addTransferencia: async function (t) {
+      checarTransfAberta(t.mes_ref);
+      var payload = {
+        mes_ref: t.mes_ref, origem_id: t.origem_id, destino_id: t.destino_id,
+        quinzena: t.quinzena, descricao: t.descricao || '', valor: t.valor, realizada: !!t.realizada,
+      };
+      var { data, error } = await db.from('transferencias').insert(payload).select().single();
+      if (error) throw error;
+      var row = normalizeTransf(data);
+      transferencias.push(row);
+      return row;
+    },
+
+    updateTransferencia: async function (id, dados) {
+      var atual = api.getTransferencia(id);
+      if (atual) checarTransfAberta(atual.mes_ref);
+      var payload = {};
+      ['mes_ref', 'origem_id', 'destino_id', 'quinzena', 'descricao', 'valor', 'realizada'].forEach(function (k) {
+        if (dados[k] !== undefined) payload[k] = dados[k];
+      });
+      var { data, error } = await db.from('transferencias').update(payload).eq('id', id).select().single();
+      if (error) throw error;
+      var row = normalizeTransf(data);
+      if (atual) Object.assign(atual, row); else transferencias.push(row);
+      return row;
+    },
+
+    toggleTransferencia: async function (id) {
+      var t = api.getTransferencia(id);
+      if (!t) return false;
+      var row = await api.updateTransferencia(id, { realizada: !t.realizada });
+      return row.realizada;
+    },
+
+    removeTransferencia: async function (id) {
+      var atual = api.getTransferencia(id);
+      if (atual) checarTransfAberta(atual.mes_ref);
+      var { error } = await db.from('transferencias').delete().eq('id', id);
+      if (error) throw error;
+      var idx = transferencias.findIndex(function (t) { return t.id === id; });
+      if (idx !== -1) transferencias.splice(idx, 1);
     },
 
     desativarResponsavel: async function (id, mesRef) {

@@ -3583,3 +3583,37 @@ button { cursor: pointer; border: none; background: none; }
 
 /* Popup de categoria da DRE não tem coluna de categoria: a 3ª coluna é o valor */
 .drill-table-sem-cat .drill-th:nth-child(3) { display: table-cell; }
+
+/* ── DRE: transferências entre responsáveis ── */
+.dre-btn-transf {
+  margin-top: 6px;
+  color: #0e7490;
+  background: #ecfeff;
+  border-color: #06b6d4;
+}
+
+.dre-btn-transf:hover {
+  background: #cffafe;
+}
+
+.dre-transf-row td:first-child {
+  box-shadow: inset 3px 0 0 #06b6d4;
+}
+
+.dre-transf-icon {
+  margin-right: 5px;
+  font-size: 12px;
+  color: #0891b2;
+}
+
+.dre-transf-prevista {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 20px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #b45309;
+  background: #fef3c7;
+  vertical-align: middle;
+}
