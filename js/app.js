@@ -12,6 +12,8 @@ var AppState = (function () {
   return {
     mesIdx: mesIdx,
     ano:    ano,
+    // Usuário escolhido ao entrar no sistema (id do responsável); a DRE abre direto nele
+    usuarioId: null,
     set: function (m, a) {
       this.mesIdx = m;
       this.ano    = a;
@@ -152,6 +154,80 @@ document.addEventListener('DOMContentLoaded', async function () {
   if (topBarRight) topBarRight.insertBefore(compNav, topBarRight.firstChild);
 
   atualizarIndicadorEncerrado();
+
+  // ── Escolha do usuário ao entrar ──────────────────────────────
+  // Pergunta a cada entrada quem está usando; o último escolhido vem destacado
+  function candidatosUsuario() {
+    var mesRef = AppData.mesRefDe(AppState.mesIdx, AppState.ano);
+    var lista = AppData.getFluxoCaixa(mesRef);
+    return lista.length ? lista : AppData.getRespsComDRE(mesRef);
+  }
+
+  function iniciais(nome) {
+    var p = String(nome || '').trim().split(/\s+/);
+    return ((p[0] || '')[0] || '').concat(p.length > 1 ? p[p.length - 1][0] : '').toUpperCase() || 'MF';
+  }
+
+  function aplicarUsuario(r) {
+    AppState.usuarioId = r ? r.id : null;
+    if (r) localStorage.setItem('mf_usuario', String(r.id));
+    var av = document.querySelector('.user-avatar');
+    if (av) {
+      av.textContent = r ? iniciais(r.nome) : 'MF';
+      av.title = r ? r.nome + ' · clique para trocar de usuário' : 'Escolher usuário';
+    }
+  }
+
+  function escolherUsuario(podeFechar) {
+    return new Promise(function (resolve) {
+      var lista = candidatosUsuario();
+      if (!lista.length) { aplicarUsuario(null); resolve(); return; }
+      if (lista.length === 1 && !podeFechar) { aplicarUsuario(lista[0]); resolve(); return; }
+
+      var ultimo = AppState.usuarioId || Number(localStorage.getItem('mf_usuario'));
+      var ov = document.createElement('div');
+      ov.className = 'user-pick-overlay';
+      ov.innerHTML =
+        '<div class="user-pick-card">' +
+          '<i class="ph-fill ph-wallet user-pick-logo"></i>' +
+          '<h2>Quem está usando?</h2>' +
+          '<p>A DRE vai abrir direto no seu nome.</p>' +
+          '<div class="user-pick-list">' +
+            lista.map(function (r) {
+              return '<button class="user-pick-item' + (r.id === ultimo ? ' user-pick-ultimo' : '') + '" data-id="' + r.id + '">' +
+                '<span class="user-pick-av">' + iniciais(r.nome) + '</span>' +
+                '<span class="user-pick-nome">' + r.nome + '</span>' +
+                (r.id === ultimo ? '<span class="user-pick-tag">último acesso</span>' : '') +
+              '</button>';
+            }).join('') +
+          '</div>' +
+          (podeFechar ? '<button class="user-pick-cancel">Cancelar</button>' : '') +
+        '</div>';
+      document.body.appendChild(ov);
+
+      ov.addEventListener('click', function (e) {
+        var item = e.target.closest('.user-pick-item');
+        if (!item && !e.target.closest('.user-pick-cancel')) return;
+        if (item) {
+          var id = Number(item.dataset.id);
+          aplicarUsuario(lista.find(function (r) { return r.id === id; }));
+        }
+        ov.remove();
+        resolve(!!item);
+      });
+    });
+  }
+
+  aplicarUsuario(null);
+  await escolherUsuario(false);
+
+  var avatar = document.querySelector('.user-avatar');
+  if (avatar) {
+    avatar.style.cursor = 'pointer';
+    avatar.addEventListener('click', async function () {
+      if (await escolherUsuario(true)) Router.refresh();
+    });
+  }
 
   Router.init();
 

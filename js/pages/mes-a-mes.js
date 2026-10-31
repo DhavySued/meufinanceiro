@@ -4,7 +4,7 @@ Router.register('mes-a-mes', function (container) {
                      'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
   var mesAtualIdx = AppState.mesIdx;
-  var tabAtiva    = null;
+  var tabAtiva    = AppState.usuarioId || null; // abre direto no usuário escolhido ao entrar
 
   function makeButtons(attrs) {
     return '<span class="row-actions">' +
@@ -44,6 +44,7 @@ Router.register('mes-a-mes', function (container) {
       var concilCount = lancs.filter(function (l) { return l.conciliado; }).length;
       return {
         desc:    'Cartão ' + c.nome,
+        cartaoId: c.id,
         valor:   Math.max(0, total),
         quinzena: 2,
         locked:  true,
@@ -552,12 +553,11 @@ Router.register('mes-a-mes', function (container) {
       return Math.max(0, net);
     }
 
-    // Lançamentos de uma categoria no mês para este responsável (valor = parte dele quando dividido)
-    function lancsDaCategoria(catNome, soCartao) {
+    // Lançamentos do mês para este responsável que passam no filtro (valor = parte dele quando dividido)
+    function lancsDoResp(filtro) {
       return AppData.getLancamentos()
         .filter(function (l) {
-          if (l.cat !== catNome || AppData.getMesRef(l) !== mesKey) return false;
-          if (soCartao && !l.cartaoId) return false;
+          if (AppData.getMesRef(l) !== mesKey || !filtro(l)) return false;
           if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respId; });
           return l.responsavelId === respId;
         })
@@ -569,14 +569,22 @@ Router.register('mes-a-mes', function (container) {
           }
           return {
             data: l.data, desc: l.desc, valor: l.tipo === 'receita' ? -v : v,
-            cartao: l.cartaoNome || '', dividido: !!(l.isDividido && l.splits),
-            parcela: l.parcela, totalParcelas: l.totalParcelas,
+            cartao: l.cartaoNome || '', cat: l.cat || '', dividido: !!(l.isDividido && l.splits),
+            parcela: l.parcela, totalParcelas: l.totalParcelas, conciliado: !!l.conciliado,
           };
         })
         .sort(function (a, b) {
           var da = a.data.split('/').reverse().join(''), db = b.data.split('/').reverse().join('');
           return da < db ? 1 : da > db ? -1 : 0;
         });
+    }
+
+    function lancsDaCategoria(catNome, soCartao) {
+      return lancsDoResp(function (l) { return l.cat === catNome && (!soCartao || l.cartaoId); });
+    }
+
+    function lancsDoCartao(cartaoId) {
+      return lancsDoResp(function (l) { return l.cartaoId === cartaoId; });
     }
 
     function escHtml(s) {
@@ -586,15 +594,37 @@ Router.register('mes-a-mes', function (container) {
     }
 
     function abrirPopupCategoria(catNome, soCartao) {
-      var items = lancsDaCategoria(catNome, soCartao);
+      abrirPopupLancs({
+        titulo: catNome, items: lancsDaCategoria(catNome, soCartao), badge: 'cartao',
+        icone: 'ph-tag', corIcone: 'var(--color-primary)', fundoIcone: 'rgba(126,34,206,0.12)',
+        vazio: 'Nenhum lançamento nesta categoria no mês.',
+      });
+    }
+
+    function abrirPopupCartao(cartaoId) {
+      var c = AppData.getCartoesFluxo().find(function (x) { return String(x.id) === String(cartaoId); });
+      if (!c) return;
+      var cor = c.cor || '#6366f1';
+      abrirPopupLancs({
+        titulo: 'Cartão ' + c.nome, items: lancsDoCartao(c.id), badge: 'cat',
+        icone: 'ph-credit-card', corIcone: cor, fundoIcone: cor + '1f',
+        vazio: 'Nenhum lançamento neste cartão no mês.',
+      });
+    }
+
+    // Popup com a lista de lançamentos (categoria ou cartão)
+    function abrirPopupLancs(opt) {
+      var items = opt.items;
       var total = items.reduce(function (s, i) { return s + i.valor; }, 0);
 
       var rowsHTML = items.length
         ? items.map(function (it) {
             var badges = '';
-            if (it.cartao) badges += '<span class="drill-badge">' + escHtml(it.cartao) + '</span>';
+            var badgeTxt = opt.badge === 'cat' ? it.cat : it.cartao;
+            if (badgeTxt) badges += '<span class="drill-badge">' + escHtml(badgeTxt) + '</span>';
             if (it.totalParcelas > 1) badges += '<span class="drill-badge drill-badge-parcela">' + it.parcela + '/' + it.totalParcelas + '</span>';
             if (it.dividido) badges += '<span class="drill-badge drill-badge-resp">dividido</span>';
+            if (opt.badge === 'cat' && it.conciliado) badges += '<span class="drill-badge drill-badge-concil">✓ conciliado</span>';
             var cor = it.valor < 0 ? 'var(--color-income)' : 'var(--color-expense)';
             return '<tr class="drill-row">' +
               '<td class="drill-td drill-td-data">' + escHtml(it.data) + '</td>' +
@@ -602,7 +632,7 @@ Router.register('mes-a-mes', function (container) {
               '<td class="drill-td drill-td-val" style="color:' + cor + '">' + (it.valor < 0 ? '+' : '') + fmtR(Math.abs(it.valor)) + '</td>' +
             '</tr>';
           }).join('')
-        : '<tr><td colspan="3" class="drill-empty">Nenhum lançamento nesta categoria no mês.</td></tr>';
+        : '<tr><td colspan="3" class="drill-empty">' + opt.vazio + '</td></tr>';
 
       var overlay = document.createElement('div');
       overlay.className = 'modal-overlay drill-overlay';
@@ -610,11 +640,11 @@ Router.register('mes-a-mes', function (container) {
         '<div class="drill-card">' +
           '<div class="drill-header">' +
             '<div class="drill-header-left">' +
-              '<div class="drill-header-icon" style="background:rgba(126,34,206,0.12);color:var(--color-primary)">' +
-                '<i class="ph-fill ph-tag"></i>' +
+              '<div class="drill-header-icon" style="background:' + opt.fundoIcone + ';color:' + opt.corIcone + '">' +
+                '<i class="ph-fill ' + opt.icone + '"></i>' +
               '</div>' +
               '<div class="drill-header-info">' +
-                '<div class="drill-header-title">' + escHtml(catNome) + '</div>' +
+                '<div class="drill-header-title">' + escHtml(opt.titulo) + '</div>' +
                 '<div class="drill-header-sub" style="color:var(--color-muted)">' +
                   escHtml(resp.nome.split(' ')[0]) + ' · ' + mesNome + ' · ' + items.length + ' ' + (items.length === 1 ? 'lançamento' : 'lançamentos') +
                 '</div>' +
@@ -660,17 +690,20 @@ Router.register('mes-a-mes', function (container) {
       getDespCartaoResp(mesIdx, respId).forEach(function (d) { despQ2.push(d); });
 
       // 2. Orçamentos do responsável — abaixo dos cartões, 2ª quinzena
+      // Orçamento marcado = encerrado no mês: a sobra deixa de ser provisionada (vale zero)
       (resp.orcamentos || []).forEach(function (m) {
+        var ckKey    = 'o_' + m.catNome;
         var gasto    = gastoCategoriaMes(m.catNome);
         var restante = m.limite - gasto;
         var excedeu  = gasto > m.limite;
         var excesso  = excedeu ? gasto - m.limite : 0;
+        var zerado   = !excedeu && isChecked(ckKey);
         despQ2.push({
           desc: m.catNome,
-          valor: excedeu ? 0 : restante,
+          valor: excedeu || zerado ? 0 : restante,
           gasto: gasto,
           locked: true, isMeta: true, limite: m.limite, restante: restante, excedeu: excedeu, excesso: excesso,
-          ckKey: 'o_' + m.catNome,
+          zerado: zerado, ckKey: ckKey,
         });
       });
 
@@ -727,7 +760,9 @@ Router.register('mes-a-mes', function (container) {
           var corBarra = pct < 70 ? '#10b981' : pct < 90 ? '#f59e0b' : '#ef4444';
           var saldoTxt = x.excedeu
             ? '<span class="dre-meta-excedeu">⚠ excedeu ' + fmtR(x.excesso) + ' · limite ' + fmtR(x.limite) + '</span>'
-            : '<span class="dre-meta-ok">resta ' + fmtR(x.restante) + '</span>';
+            : x.zerado
+              ? '<span class="dre-meta-ok">sobra de ' + fmtR(x.restante) + ' zerada</span>'
+              : '<span class="dre-meta-ok">resta ' + fmtR(x.restante) + '</span>';
           var tdInfo = '<td class="dre-td"' + (x.excedeu ? ' colspan="2"' : '') + '>' +
               ckBox(ck) +
               '<div class="dre-meta-info dre-cat-clicavel" data-cat-drill="' + encodeURIComponent(x.desc) + '" title="Ver lançamentos"' + doneDescStyle(ck) + '>' +
@@ -738,7 +773,7 @@ Router.register('mes-a-mes', function (container) {
               '</div>' +
               '<div class="dre-mini-bar"><div style="height:100%;width:' + pct + '%;background:' + corBarra + ';border-radius:3px"></div></div>' +
             '</td>';
-          var tdValor = x.excedeu ? '' : '<td class="dre-td-val dre-td-val-top"><span class="' + cls + '">' + fmtR(x.restante) + '</span></td>';
+          var tdValor = x.excedeu ? '' : '<td class="dre-td-val dre-td-val-top"><span class="' + cls + '">' + fmtR(x.valor) + '</span></td>';
           return '<tr class="dre-row dre-meta-row' + (x.excedeu ? ' dre-meta-excedida' : '') + '"' + doneTrStyle(ck) + '>' +
             tdInfo + tdValor +
           '</tr>';
@@ -804,7 +839,8 @@ Router.register('mes-a-mes', function (container) {
         var corBorda  = x.cor ? x.cor : '#6366f1';
         var corFundo  = x.cor ? x.cor + '12' : 'transparent';
         var trStyle = 'border-left:3px solid ' + corBorda + ';background:' + corFundo + (isChecked(ck) ? ';opacity:0.45' : '');
-        return '<tr class="dre-row' + (x.todoConcil ? ' tr-conciliado' : '') + '" style="' + trStyle + '">' +
+        return '<tr class="dre-row dre-cartao-row' + (x.todoConcil ? ' tr-conciliado' : '') + '" style="' + trStyle + '"' +
+            ' data-cartao-drill="' + x.cartaoId + '" title="Ver lançamentos do cartão">' +
           '<td class="dre-td" style="padding-left:13px">' +
             ckBox(ck) +
             '<span' + doneDescStyle(ck) + '>' +
@@ -927,6 +963,167 @@ Router.register('mes-a-mes', function (container) {
       '</div>';
     }
 
+    // ── Resultado do mês: composição + explicação de orçamentos e transferências ──
+    function fmtV(v) { return (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+    function fmtSinal(v) { return (v > 0 ? '+' : v < 0 ? '-' : '') + fmtV(Math.abs(v)); }
+    function clsSaldo(v) { return v >= 0 ? 'dre-res-pos' : 'dre-res-neg'; }
+
+    function buildResultado(receitas, despesas, q) {
+      function somaPref(arr, prefs) {
+        return arr.filter(function (x) {
+          return prefs.some(function (p) { return (x.ckKey || '').indexOf(p) === 0; });
+        }).reduce(function (s, x) { return s + x.valor; }, 0);
+      }
+      var vGanhos    = somaPref(receitas, ['r_']);
+      var vTransfIn  = somaPref(receitas, ['t_']);
+      var vCartoes   = somaPref(despesas, ['c_']);
+      var vOrc       = somaPref(despesas, ['o_']);
+      var vContas    = somaPref(despesas, ['f_', 'm_']);
+      var vTransfOut = somaPref(despesas, ['t_']);
+      var entra = vGanhos + vTransfIn;
+      var sai   = vCartoes + vOrc + vContas + vTransfOut;
+      var saldo = entra - sai;
+      var primeiroNome = escHtml(resp.nome.split(' ')[0]);
+      var mesCurto = MESES_NOMES[mesIdx];
+
+      var frase = saldo > 0
+        ? 'Em ' + mesCurto + ' entram <b>' + fmtV(entra) + '</b> e saem <b>' + fmtV(sai) + '</b>. ' +
+          'Depois de pagar tudo, <b>sobram ' + fmtV(saldo) + '</b>.'
+        : saldo < 0
+          ? 'Em ' + mesCurto + ' entram <b>' + fmtV(entra) + '</b> e saem <b>' + fmtV(sai) + '</b>. ' +
+            'As contas passam do que entra: <b>faltam ' + fmtV(-saldo) + '</b>.'
+          : 'Em ' + mesCurto + ' o que entra (' + fmtV(entra) + ') cobre exatamente o que sai.';
+
+      function qzTile(n, dias, r, d) {
+        var s = r - d;
+        return '<div class="dre-res-qz">' +
+          '<div class="dre-res-qz-lbl">' + n + 'ª Quinzena <span>dias ' + dias + '</span></div>' +
+          '<div class="dre-res-qz-val ' + clsSaldo(s) + '">' + fmtSinal(s) + '</div>' +
+          '<div class="dre-res-qz-sub">entra ' + fmtV(r) + ' · sai ' + fmtV(d) + '</div>' +
+        '</div>';
+      }
+
+      function linha(icone, rotulo, ajuda, valor, cls) {
+        return '<div class="dre-res-linha' + (valor ? '' : ' dre-res-linha-zero') + '">' +
+          '<i class="ph ' + icone + '"></i>' +
+          '<div class="dre-res-linha-txt"><span>' + rotulo + '</span><small>' + ajuda + '</small></div>' +
+          '<strong class="' + cls + '">' + fmtV(valor) + '</strong>' +
+        '</div>';
+      }
+
+      var hero =
+        '<div class="dre-res-hero">' +
+          '<div class="dre-res-main ' + clsSaldo(saldo) + '-bg">' +
+            '<div class="dre-res-main-lbl">' + (saldo >= 0 ? 'Sobra no mês' : 'Falta no mês') + '</div>' +
+            '<div class="dre-res-main-val">' + fmtSinal(saldo) + '</div>' +
+            '<p class="dre-res-frase">' + frase + '</p>' +
+          '</div>' +
+          qzTile(1, '01–15', q.r1, q.d1) +
+          qzTile(2, '16–31', q.r2, q.d2) +
+        '</div>';
+
+      var composicao =
+        '<div class="dre-res-cols">' +
+          '<div class="dre-res-col">' +
+            '<div class="dre-res-col-hdr dre-val-income"><i class="ph ph-arrow-down-left"></i>O que entra</div>' +
+            linha('ph-money', 'Ganhos', 'salário e outras contas a receber', vGanhos, 'dre-val-income') +
+            linha('ph-arrows-left-right', 'Transferências recebidas', 'vindas de outras DREs', vTransfIn, 'dre-val-income') +
+            '<div class="dre-res-total"><span>Total que entra</span><strong class="dre-val-income">' + fmtV(entra) + '</strong></div>' +
+          '</div>' +
+          '<div class="dre-res-col">' +
+            '<div class="dre-res-col-hdr dre-val-expense"><i class="ph ph-arrow-up-right"></i>O que sai</div>' +
+            linha('ph-credit-card', 'Cartões', 'compras lançadas nas faturas', vCartoes, 'dre-val-expense') +
+            linha('ph-wallet', 'Orçamentos', 'sobra reservada do limite (veja abaixo)', vOrc, 'dre-val-expense') +
+            linha('ph-push-pin', 'Contas a pagar', 'contas fixas e avulsas', vContas, 'dre-val-expense') +
+            linha('ph-arrows-left-right', 'Transferências enviadas', 'para outras DREs', vTransfOut, 'dre-val-expense') +
+            '<div class="dre-res-total"><span>Total que sai</span><strong class="dre-val-expense">' + fmtV(sai) + '</strong></div>' +
+          '</div>' +
+        '</div>';
+
+      // Orçamentos: explica quanto de cada um entrou como despesa na DRE
+      var orcs = despesas.filter(function (x) { return x.isMeta; });
+      var orcHTML = orcs.length
+        ? orcs.map(function (x) {
+            var detalhe, tag;
+            if (x.excedeu) {
+              tag = '<span class="dre-exp-tag dre-exp-tag-neg">estourou</span>';
+              detalhe = 'Gastou ' + fmtV(x.gasto) + ' de ' + fmtV(x.limite) + ' — passou ' + fmtV(x.excesso) + '. ' +
+                'O gasto já está nos cartões, então o orçamento <b>não somou nada</b> a mais.';
+            } else if (x.zerado) {
+              tag = '<span class="dre-exp-tag">encerrado</span>';
+              detalhe = 'Gastou ' + fmtV(x.gasto) + ' de ' + fmtV(x.limite) + '. Você marcou como encerrado, ' +
+                'então a sobra de ' + fmtV(x.restante) + ' <b>não entrou</b> nas contas a pagar.';
+            } else {
+              tag = '<span class="dre-exp-tag dre-exp-tag-ok">reservado</span>';
+              detalhe = 'Gastou ' + fmtV(x.gasto) + ' de ' + fmtV(x.limite) + ' (já está nos cartões). ' +
+                'A sobra de <b>' + fmtV(x.valor) + ' entrou</b> como conta a pagar, reservada para o resto do mês.';
+            }
+            var valorTxt = x.valor
+              ? '<strong class="dre-val-expense">' + fmtV(x.valor) + '</strong>'
+              : '<strong class="dre-exp-zero">' + fmtV(0) + '</strong>';
+            return '<div class="dre-exp-item">' +
+              '<div class="dre-exp-top"><span class="dre-exp-nome">' + escHtml(x.desc) + tag + '</span>' + valorTxt + '</div>' +
+              '<div class="dre-exp-det">' + detalhe + '</div>' +
+            '</div>';
+          }).join('')
+        : '<div class="dre-exp-vazio">' + primeiroNome + ' não tem orçamentos cadastrados, então nada foi reservado este mês.</div>';
+
+      var orcBox =
+        '<div class="dre-exp-box">' +
+          '<div class="dre-exp-hdr">' +
+            '<span><i class="ph ph-wallet"></i>Orçamentos</span>' +
+            '<strong class="dre-val-expense">' + fmtV(vOrc) + '</strong>' +
+          '</div>' +
+          '<p class="dre-exp-como">Como funciona: o que você já gastou na categoria entra pelos cartões. ' +
+            'A DRE reserva só o que <b>ainda falta</b> do limite. Marque o orçamento quando não for gastar mais nele — a sobra deixa de contar.</p>' +
+          orcHTML +
+        '</div>';
+
+      // Transferências: explica se o dinheiro já entrou/saiu da conta
+      var tm = transfDoMes();
+      var tLista = tm.recebidas.map(function (t) { return { t: t, enviada: false }; })
+        .concat(tm.enviadas.map(function (t) { return { t: t, enviada: true }; }));
+      var tHTML = tLista.length
+        ? tLista.map(function (o) {
+            var t = o.t, ok = !!t.realizada;
+            var quem = o.enviada ? 'Para ' + escHtml(nomeCurto(t.destino_id)) : 'De ' + escHtml(nomeCurto(t.origem_id));
+            var tag = ok
+              ? '<span class="dre-exp-tag dre-exp-tag-ok">' + (o.enviada ? 'saiu' : 'entrou') + '</span>'
+              : '<span class="dre-exp-tag dre-exp-tag-warn">prevista</span>';
+            var detalhe = o.enviada
+              ? (ok ? 'O dinheiro <b>já saiu</b> da conta de ' + primeiroNome + '.'
+                    : 'O dinheiro <b>ainda não saiu</b> da conta. Já está descontado no resultado; marque quando transferir.')
+              : (ok ? 'O dinheiro <b>já entrou</b> na conta de ' + primeiroNome + '.'
+                    : 'O dinheiro <b>ainda não entrou</b> na conta. Já está somado no resultado; marque quando cair.');
+            return '<div class="dre-exp-item">' +
+              '<div class="dre-exp-top">' +
+                '<span class="dre-exp-nome">' + quem + (t.descricao ? ' · ' + escHtml(t.descricao) : '') + tag + '</span>' +
+                '<strong class="' + (o.enviada ? 'dre-val-expense' : 'dre-val-income') + '">' + (o.enviada ? '-' : '+') + fmtV(t.valor) + '</strong>' +
+              '</div>' +
+              '<div class="dre-exp-det">' + t.quinzena + 'ª quinzena. ' + detalhe + '</div>' +
+            '</div>';
+          }).join('')
+        : '<div class="dre-exp-vazio">Nenhuma transferência neste mês: nada entrou nem saiu entre as DREs.</div>';
+
+      var liquido = vTransfIn - vTransfOut;
+      var transfBox =
+        '<div class="dre-exp-box">' +
+          '<div class="dre-exp-hdr">' +
+            '<span><i class="ph ph-arrows-left-right"></i>Transferências</span>' +
+            '<strong class="' + (liquido >= 0 ? 'dre-val-income' : 'dre-val-expense') + '">' + fmtSinal(liquido) + '</strong>' +
+          '</div>' +
+          '<p class="dre-exp-como">Como funciona: transferência é dinheiro mudando de uma DRE para outra. ' +
+            'Recebidas somam e enviadas descontam, mesmo enquanto estão <b>previstas</b>. A marcação ✓ indica se o dinheiro já caiu (ou saiu) da conta.</p>' +
+          tHTML +
+        '</div>';
+
+      return '<div class="section-box dre-res" style="margin-bottom:24px">' +
+        '<div class="section-box-header"><h2>Resultado · ' + mesNome + ' · ' + escHtml(resp.nome) + '</h2></div>' +
+        hero + composicao +
+        '<div class="dre-res-cols">' + orcBox + transfBox + '</div>' +
+      '</div>';
+    }
+
     function render() {
       var recs    = getReceitasQz();
       var receitasQ1 = recs.q1, receitasQ2 = recs.q2;
@@ -934,7 +1131,6 @@ Router.register('mes-a-mes', function (container) {
       var despQ1  = qzData.despQ1, despQ2 = qzData.despQ2;
       var totalR1 = soma(receitasQ1), totalD1 = soma(despQ1), saldo1 = totalR1 - totalD1;
       var totalR2 = soma(receitasQ2), totalD2 = soma(despQ2), saldo2 = totalR2 - totalD2;
-      var totalR  = totalR1 + totalR2, totalD = totalD1 + totalD2, saldoTotal = totalR - totalD;
 
       var replicarBtn = (isNovoModelo && mesIdx < 11)
         ? '<button class="btn btn-outline" id="btn-abrir-replicar" style="font-size:13px;gap:6px">' +
@@ -952,32 +1148,7 @@ Router.register('mes-a-mes', function (container) {
           buildCatPanel() +
         '</div>' +
 
-        '<div class="section-box" style="margin-bottom:24px">' +
-          '<div class="section-box-header"><h2>Resumo · ' + mesNome + ' · ' + resp.nome + '</h2></div>' +
-          '<table class="data-table">' +
-            '<thead><tr><th></th><th>1ª Quinzena</th><th>2ª Quinzena</th><th>Total do Mês</th></tr></thead>' +
-            '<tbody>' +
-              '<tr>' +
-                '<td style="font-weight:600"><span style="color:#10b981;margin-right:6px">↑</span>Contas a Receber</td>' +
-                '<td class="amount-income">' + fmtR(totalR1) + '</td>' +
-                '<td class="amount-income">' + fmtR(totalR2) + '</td>' +
-                '<td><strong class="amount-income">' + fmtR(totalR) + '</strong></td>' +
-              '</tr>' +
-              '<tr>' +
-                '<td style="font-weight:600"><span style="color:#ef4444;margin-right:6px">↓</span>Contas a Pagar</td>' +
-                '<td class="amount-expense">' + fmtR(totalD1) + '</td>' +
-                '<td class="amount-expense">' + fmtR(totalD2) + '</td>' +
-                '<td><strong class="amount-expense">' + fmtR(totalD) + '</strong></td>' +
-              '</tr>' +
-              '<tr class="' + (saldoTotal >= 0 ? 'dre-resumo-pos' : 'dre-resumo-neg') + '">' +
-                '<td style="font-weight:700">Resultado</td>' +
-                '<td class="' + (saldo1 >= 0 ? 'amount-income' : 'amount-expense') + '">' + (saldo1 > 0 ? '+' : saldo1 < 0 ? '-' : '') + fmtR(Math.abs(saldo1)) + '</td>' +
-                '<td class="' + (saldo2 >= 0 ? 'amount-income' : 'amount-expense') + '">' + (saldo2 > 0 ? '+' : saldo2 < 0 ? '-' : '') + fmtR(Math.abs(saldo2)) + '</td>' +
-                '<td><strong class="' + (saldoTotal >= 0 ? 'amount-income' : 'amount-expense') + '">' + (saldoTotal > 0 ? '+' : saldoTotal < 0 ? '-' : '') + fmtR(Math.abs(saldoTotal)) + '</strong></td>' +
-              '</tr>' +
-            '</tbody>' +
-          '</table>' +
-        '</div>';
+        buildResultado(receitasQ1.concat(receitasQ2), despQ1.concat(despQ2), { r1: totalR1, d1: totalD1, r2: totalR2, d2: totalD2 });
 
       if (replicarBtn) {
         document.getElementById('btn-abrir-replicar').addEventListener('click', abrirModalReplicar);
@@ -999,6 +1170,8 @@ Router.register('mes-a-mes', function (container) {
           return;
         }
         cb.disabled = false;
+        // Check de orçamento zera/restaura a sobra; check de transferência muda a explicação do resultado
+        if (/^(o_|t_)/.test(cb.dataset.ck)) { render(); return; }
         var tr = cb.closest('tr');
         if (!tr) return;
         var done = isChecked(cb.dataset.ck);
@@ -1017,6 +1190,11 @@ Router.register('mes-a-mes', function (container) {
         var catDrill = e.target.closest('[data-cat-drill]');
         if (catDrill && !e.target.closest('.dre-row-check')) {
           abrirPopupCategoria(decodeURIComponent(catDrill.dataset.catDrill), !!catDrill.dataset.soCartao);
+          return;
+        }
+        var cartaoDrill = e.target.closest('[data-cartao-drill]');
+        if (cartaoDrill && !e.target.closest('.dre-row-check')) {
+          abrirPopupCartao(cartaoDrill.dataset.cartaoDrill);
           return;
         }
         var btnDel  = e.target.closest('.btn-del-row');

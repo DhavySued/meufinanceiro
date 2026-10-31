@@ -67,6 +67,11 @@ Router.register('dashboard', function (container) {
     };
   }
 
+  // Orçamento marcado na DRE = encerrado no mês: a sobra não é provisionada
+  function orcZerado(resp, mesIdx, m) {
+    return AppData.isDreChecked(resp.id, mesIdx, "o_" + m.catNome);
+  }
+
   // ── DRE: replica a lógica de cálculo do mes-a-mes.js ──
   function calcDREResp(mesIdx, resp, cat) {
     var mesRef = String(AppState.ano) + '-' + String(mesIdx + 1).padStart(2, '0');
@@ -98,6 +103,7 @@ Router.register('dashboard', function (container) {
     });
 
     (resp.orcamentos || []).forEach(function (m) {
+      if (orcZerado(resp, mesIdx, m)) return;
       var gasto = AppData.getLancamentos()
         .filter(function (l) { return l.cat === m.catNome && AppData.getMesRef(l) === mesRef && l.responsavelId === respId; })
         .reduce(function (s, l) { return s + (l.tipo === 'receita' ? -Math.abs(l.valor) : Math.abs(l.valor)); }, 0);
@@ -195,6 +201,7 @@ Router.register('dashboard', function (container) {
       receita += getGanhosDoMes(resp, mesIdx).reduce(function (s, g) { return s + g.valor; }, 0);
 
       (resp.orcamentos || []).forEach(function (m) {
+        if (orcZerado(resp, mesIdx, m)) return;
         var gasto = AppData.getLancamentos()
           .filter(function (l) { return l.cat === m.catNome && AppData.getMesRef(l) === mesRef && l.responsavelId === resp.id; })
           .reduce(function (s, l) { return s + (l.tipo === 'receita' ? -Math.abs(l.valor) : Math.abs(l.valor)); }, 0);
@@ -264,6 +271,7 @@ Router.register('dashboard', function (container) {
 
     resps.forEach(function (resp) {
       (resp.orcamentos || []).forEach(function (m) {
+        if (orcZerado(resp, mesIdx, m)) return;
         var gasto = AppData.getLancamentos()
           .filter(function (l) { return l.cat === m.catNome && AppData.getMesRef(l) === mesRef && l.responsavelId === resp.id && l.tipo !== 'receita'; })
           .reduce(function (s, l) { return s + Math.abs(l.valor); }, 0);
@@ -305,6 +313,7 @@ Router.register('dashboard', function (container) {
 
     resps.forEach(function (resp) {
       (resp.orcamentos || []).forEach(function (m) {
+        if (orcZerado(resp, mesIdx, m)) return;
         var gasto = AppData.getLancamentos()
           .filter(function (l) { return l.cat === m.catNome && AppData.getMesRef(l) === mesRef && l.responsavelId === resp.id && l.tipo !== 'receita'; })
           .reduce(function (s, l) { return s + Math.abs(l.valor); }, 0);
