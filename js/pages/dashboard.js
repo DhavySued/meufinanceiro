@@ -4,6 +4,7 @@ var _dashRespNenhum = false; // true = nenhum responsável marcado (valores zera
 var _dashVisao    = 'geral'; // 'geral' | 'cartao' | 'dre'
 var _dashCartaoId = '';      // '' = todos os cartões
 var _dashCat      = [];      // [] = todas as categorias
+var _dashSoParcelado = false; // Apenas Cartão: true = só compras parceladas (sem à vista)
 
 Router.register('dashboard', function (container) {
 
@@ -14,6 +15,11 @@ Router.register('dashboard', function (container) {
 
   function fmtR(v) {
     return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
+
+  // Filtro "só parceladas" da visão Apenas Cartão: descarta compras à vista
+  function passaParcela(l) {
+    return _dashVisao !== 'cartao' || !_dashSoParcelado || (l.totalParcelas || 0) > 1;
   }
 
   function escapeHtml(s) {
@@ -167,6 +173,7 @@ Router.register('dashboard', function (container) {
           if (l.cartaoId !== c.id) return false;
           if (AppData.getMesRef(l) !== mesRef) return false;
           if (cat && cat.length > 0 && cat.indexOf(l.cat) === -1) return false;
+          if (!passaParcela(l)) return false;
           if (respInt !== null) {
             if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respInt; });
             return l.responsavelId === respInt;
@@ -351,6 +358,7 @@ Router.register('dashboard', function (container) {
           if (l.cartaoId !== c.id) return false;
           if (AppData.getMesRef(l) !== mesRef) return false;
           if (cat && cat.length > 0 && cat.indexOf(l.cat) === -1) return false;
+          if (!passaParcela(l)) return false;
           if (respInt !== null) {
             if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respInt; });
             return l.responsavelId === respInt;
@@ -547,6 +555,7 @@ Router.register('dashboard', function (container) {
           if (l.cartaoId !== c.id) return false;
           if (AppData.getMesRef(l) !== mesRef) return false;
           if (cat && cat.length > 0 && cat.indexOf(l.cat) === -1) return false;
+          if (!passaParcela(l)) return false;
           if (respInt !== null) {
             if (l.isDividido && l.splits) return l.splits.some(function (s) { return s.respId === respInt; });
             return l.responsavelId === respInt;
@@ -731,6 +740,7 @@ Router.register('dashboard', function (container) {
       if (visao === 'cartao') {
         if (!l.cartaoId) return;
         if (cartaoId && l.cartaoId !== parseInt(cartaoId)) return;
+        if (!passaParcela(l)) return;
       }
       var valor = 0;
       if (isMulti) {
@@ -830,7 +840,11 @@ Router.register('dashboard', function (container) {
           '</button>' +
         '</div>' +
         (visao === 'cartao'
-          ? '<select id="dash-cartao-sel" class="dash-filtro-sel">' + cartaoOpts + '</select>'
+          ? '<select id="dash-cartao-sel" class="dash-filtro-sel">' + cartaoOpts + '</select>' +
+            '<select id="dash-parcela-sel" class="dash-filtro-sel">' +
+              '<option value="">Todas as compras</option>' +
+              '<option value="1"' + (_dashSoParcelado ? ' selected' : '') + '>Só parceladas</option>' +
+            '</select>'
           : '') +
       '</div>' +
 
@@ -842,7 +856,7 @@ Router.register('dashboard', function (container) {
         : '<div class="summary-grid">' +
             buildCard('ph-scales',           'Saldo · ' + mesNome, saldo, saldo >= 0 ? 'income' : 'expense', saldo >= 0 ? 'dash-card-income' : 'dash-card-expense') +
             buildCard('ph-arrow-circle-up',  'Contas a Receber · ' + mesNome, dados.receita, 'income',  'dash-card-income',  'receita') +
-            buildCard('ph-arrow-circle-down', 'Contas a Pagar · ' + mesNome + (visao === 'cartao' ? ' (Cartão)' : visao === 'dre' ? ' (DRE)' : ''), dados.despesa, 'expense', 'dash-card-expense', 'despesa') +
+            buildCard('ph-arrow-circle-down', 'Contas a Pagar · ' + mesNome + (visao === 'cartao' ? (_dashSoParcelado ? ' (Parceladas)' : ' (Cartão)') : visao === 'dre' ? ' (DRE)' : ''), dados.despesa, 'expense', 'dash-card-expense', 'despesa') +
           '</div>'
       ) +
 
@@ -939,6 +953,15 @@ Router.register('dashboard', function (container) {
       });
     }
 
+    // ── Filtro de parceladas (Apenas Cartão) ──
+    var selParcela = document.getElementById('dash-parcela-sel');
+    if (selParcela) {
+      selParcela.addEventListener('change', function () {
+        _dashSoParcelado = this.value === '1';
+        render(_dashRespIds, _dashVisao, _dashCartaoId, _dashCat);
+      });
+    }
+
     // ── Drill-down cards de resumo (receita / despesa) ──
     container.querySelector('.summary-grid').addEventListener('click', function (e) {
       var card = e.target.closest('[data-drill]');
@@ -972,7 +995,7 @@ Router.register('dashboard', function (container) {
         ? (AppData.cartoes.find(function (c) { return c.id === parseInt(cartaoId); }) || {}).nome || ''
         : '';
       var sufixo = _dashVisao === 'cartao'
-        ? ' · Cartão' + (cartaoNome ? ' ' + cartaoNome : '')
+        ? ' · Cartão' + (cartaoNome ? ' ' + cartaoNome : '') + (_dashSoParcelado ? ' · parceladas' : '')
         : _dashVisao === 'dre' ? ' · DRE'
         : _dashVisao === 'adiantamento' ? '' : '';
       var catSufixo = (cat && cat.length > 0) ? ' · ' + (cat.length === 1 ? cat[0] : cat.length + ' cats') : '';
